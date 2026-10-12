@@ -1,32 +1,22 @@
-# Works On Cloud – Google Cloud AI Builder Cup 2026
+# KampungCart
 
-**Team:** Works On Cloud
-**Theme:** Retail & Commerce – Intelligent Customer and Business Experiences
-**Platform:** Hack2Skill
+**Make any shop AI-ready from one photo.**
 
-## Team
-| Name | Role | Owns |
-|---|---|---|
-| Aisha Siddiqua ([@Aisha1124](https://github.com/Aisha1124)) | Team Lead, AI/Agent Engineering | Product direction, agent design, backend, final review & merges |
-| Bijay Pathak ([@beejay777](https://github.com/beejay777)) | Cloud & DevOps Engineer | Deployment, CI/CD, infrastructure (GKE / Cloud Run), security, cross-team support |
+AI shopping agents are becoming the new way people shop. Small shops without websites are invisible to them. KampungCart turns a menu or price-list photo into an AI-agent-ready store with built-in fraud checks and owner approval.
 
-## Problem
-_TBD_
+Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
-## Solution
-_TBD_
+## Team: Works On Cloud
+- Aisha Siddiqua (Lead): agents, AI, MCP
+- Bijay Pathak: infrastructure, CI/CD, security, deck
 
-## Tech Stack
-- **AI:** Google Cloud Vertex AI / Gemini
-- **Backend:** Python, FastAPI
-- **Infra & Deployment:** Cloud Run / GKE
-- **CI/CD:** _TBD_
+## Stack
+Gemini · Google ADK · Cloud Run · Firestore · Cloud Storage · Firebase Hosting · Secret Manager · Cloud Build
 
-## Architecture
-_TBD_
-
-## Setup
-_TBD_
-
-## Demo
-_TBD_
+## Structure
+- `agents/`: ADK + Gemini agents
+- `backend/`: FastAPI APIs, MCP server, UCP endpoint
+- `dashboard/`: owner dashboard
+- `infra/`: deployment and CI/CD
+- `docs/`: deck and architecture
+- `tests/`: evaluation data
