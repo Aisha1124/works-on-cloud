@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # Internal paths. Not listed in .env.example; the defaults work everywhere.
     data_dir: Path = REPO_ROOT / "data"
+    uploads_dir: Path = REPO_ROOT / "uploads"
     dashboard_dist: Path = REPO_ROOT / "dashboard" / "dist"
 
 

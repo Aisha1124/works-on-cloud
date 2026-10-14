@@ -1,0 +1,492 @@
+{
+  "_note": "Ground truth drafted by Claude from a 555x685 photo on 2026-10-15. Please review. Prices are clearly readable. English names are the small printed subtitles (best reading); items with check=true have uncertain characters/names. Matching uses name OR name_local.",
+  "partial": false,
+  "shop_name": "",
+  "products": [
+    {
+      "name": "Petai Fried Rice",
+      "name_local": "臭豆炒饭",
+      "base_price": "8",
+      "variant_count": 0
+    },
+    {
+      "name": "Salted Fish Fried Rice",
+      "name_local": "咸鱼炒饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Toon Leaves Fried Rice",
+      "name_local": "香椿素炒饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Tom Yam Vege Fried Rice",
+      "name_local": "东炎炒饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Olive Vege Fried Rice",
+      "name_local": "橄榄素炒饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Fried Rice",
+      "name_local": "素炒饭",
+      "base_price": "5",
+      "variant_count": 0
+    },
+    {
+      "name": "Deep Fried Mushroom Rice",
+      "name_local": "世界名片饭",
+      "base_price": "7",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Sweet and Sour Pork Rice",
+      "name_local": "素咕噜肉饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Luo Han Mixed Vege Rice",
+      "name_local": "罗汉斋饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Black Bean Bitter Gourd Rice",
+      "name_local": "豉汁苦瓜饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Mushroom Rice",
+      "name_local": "鲜菇饭",
+      "base_price": "7",
+      "variant_count": 0
+    },
+    {
+      "name": "Sambal Petai Rice",
+      "name_local": "叁峇臭豆饭",
+      "base_price": "8",
+      "variant_count": 0
+    },
+    {
+      "name": "Sambal Fried Mushroom Rice",
+      "name_local": "叁峇炸菇饭",
+      "base_price": "8",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Pork Slice with Black Pepper Rice",
+      "name_local": "黑胡椒肉片饭",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Mushroom with Black Pepper Rice",
+      "name_local": "黑胡椒炸菇饭",
+      "base_price": "7",
+      "variant_count": 0
+    },
+    {
+      "name": "Fresh Mushroom Bitter Gourd Rice",
+      "name_local": "鲜菇苦瓜饭",
+      "base_price": "8",
+      "variant_count": 0
+    },
+    {
+      "name": "Fresh Mushroom Broccoli Rice",
+      "name_local": "鲜菇西兰花饭",
+      "base_price": "8",
+      "variant_count": 0
+    },
+    {
+      "name": "Mix Vege Tofu",
+      "name_local": "红烧豆腐",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Black Bean Sauce with Tofu",
+      "name_local": "豉汁豆腐",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Beancurd in Chili Sauce",
+      "name_local": "麻婆豆腐",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Chinese Toon with Tofu",
+      "name_local": "香椿豆腐",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Olive Vege with Tofu",
+      "name_local": "橄榄香豆腐",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Oatmeal Butter Vege Prawn",
+      "name_local": "麦片奶油虾",
+      "base_price": "15",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Vege Prawn with Mayonnaise",
+      "name_local": "炸沙律素虾",
+      "base_price": "15",
+      "variant_count": 0
+    },
+    {
+      "name": "Curry Vege Prawn",
+      "name_local": "咖喱素虾",
+      "base_price": "15",
+      "variant_count": 0
+    },
+    {
+      "name": "Sambal Petai Vege Prawn",
+      "name_local": "叁峇臭豆虾",
+      "base_price": "15",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Dried Hor Fun",
+      "name_local": "干炒河粉",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Hor Fun with Egg Gravy",
+      "name_local": "滑蛋河粉",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Black Bean Bitter Gourd Hor Fun",
+      "name_local": "豉汁苦瓜河粉",
+      "base_price": "7",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Hokkien Mee (Black)",
+      "name_local": "福建手工面（黑）",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Hokkien Mee (White)",
+      "name_local": "福建面（白）",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Kway Teow Mee",
+      "name_local": "炒粿条面",
+      "base_price": "6",
+      "variant_count": 0,
+      "check": true
+    },
+    {
+      "name": "Mee Sua Soup",
+      "name_local": "面线汤",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Tom Yam Mee Soup",
+      "name_local": "东炎面汤",
+      "base_price": "7",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Sliced Fish Bee Hoon Soup",
+      "name_local": "素鱼片米粉",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Bee Hoon",
+      "name_local": "星州米粉",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Mee Goreng",
+      "name_local": "素印度面",
+      "base_price": "6",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Wat Fan (Rice with Gravy)",
+      "name_local": "素烩饭",
+      "base_price": "6",
+      "variant_count": 0,
+      "check": true
+    },
+    {
+      "name": "Kang Kong in Sambal Belachan",
+      "name_local": "马来风光",
+      "base_price": "9",
+      "variant_count": 0
+    },
+    {
+      "name": "Luo Han Mixed Vege",
+      "name_local": "罗汉斋",
+      "base_price": "12",
+      "variant_count": 0
+    },
+    {
+      "name": "Sambal Petai",
+      "name_local": "叁峇炒臭豆",
+      "base_price": "16",
+      "variant_count": 0
+    },
+    {
+      "name": "Spicy Eggplant",
+      "name_local": "辣味香茄",
+      "base_price": "12",
+      "variant_count": 0
+    },
+    {
+      "name": "Four Heavenly Kings",
+      "name_local": "四大天王",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Fresh Mushroom Stir Fry",
+      "name_local": "鲜菇炒时菜",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Mix Mushrooms",
+      "name_local": "清炒三鲜菇",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Broccoli",
+      "name_local": "清炒西兰花",
+      "base_price": "12",
+      "variant_count": 0
+    },
+    {
+      "name": "Sambal Sweet Potato Leaves",
+      "name_local": "叁峇番薯叶",
+      "base_price": "9",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Asparagus",
+      "name_local": "清炒芦笋",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Fu Yong Omelette",
+      "name_local": "芙蓉煎蛋",
+      "base_price": "9",
+      "variant_count": 0
+    },
+    {
+      "name": "Bitter Gourd Omelette",
+      "name_local": "苦瓜煎蛋",
+      "base_price": "9",
+      "variant_count": 0
+    },
+    {
+      "name": "Tomato with Omelette",
+      "name_local": "番茄煎蛋",
+      "base_price": "9",
+      "variant_count": 0
+    },
+    {
+      "name": "Spicy Vege Fish",
+      "name_local": "香辣素鱼",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Fish in Sweet and Sour Sauce",
+      "name_local": "酸甜素鱼",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Fish in Black Bean Sauce",
+      "name_local": "豉汁香素鱼",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Tom Yam Vege Fish",
+      "name_local": "东炎素鱼",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Sambal Vege Fish",
+      "name_local": "叁峇素鱼",
+      "base_price": "12",
+      "variant_count": 0
+    },
+    {
+      "name": "Assam Curry Vege Fish",
+      "name_local": "咖喱素鱼",
+      "base_price": "15",
+      "variant_count": 0,
+      "check": true
+    },
+    {
+      "name": "Ginger Vege Fish",
+      "name_local": "姜丝素鱼",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Ginger Egg Soup",
+      "name_local": "姜酒蛋花汤",
+      "base_price": "7",
+      "variant_count": 0
+    },
+    {
+      "name": "Bitter Gourd Soup",
+      "name_local": "苦瓜汤",
+      "base_price": "4.50",
+      "variant_count": 0
+    },
+    {
+      "name": "Tofu Seaweed Soup",
+      "name_local": "紫菜豆腐汤",
+      "base_price": "4.50",
+      "variant_count": 0
+    },
+    {
+      "name": "Tom Yam Seafood Soup",
+      "name_local": "东炎汤",
+      "base_price": "7",
+      "variant_count": 0
+    },
+    {
+      "name": "Mixed Vege Soup",
+      "name_local": "什锦菜汤",
+      "base_price": "4.50",
+      "variant_count": 0
+    },
+    {
+      "name": "Gongbao Hericium",
+      "name_local": "宫保猴头菇",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Hericium in Black Bean Sauce",
+      "name_local": "豉汁猴头菇",
+      "base_price": "14",
+      "variant_count": 0
+    },
+    {
+      "name": "Gongbao Vege Pork",
+      "name_local": "宫保炒素肉",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Hericium with Broccoli",
+      "name_local": "猴头菇西兰花",
+      "base_price": "15",
+      "variant_count": 0
+    },
+    {
+      "name": "Deep Fried Mushroom in Sweet and Sour Sauce",
+      "name_local": "世界名片",
+      "base_price": "12",
+      "variant_count": 0
+    },
+    {
+      "name": "Fried Jade Roll (Ngor Hiang)",
+      "name_local": "翡翠卷",
+      "base_price": "9",
+      "variant_count": 0
+    },
+    {
+      "name": "Deep Fried Sotong Ring",
+      "name_local": "炸花枝圈",
+      "base_price": "9",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Pork Slice with Black Bean Sauce",
+      "name_local": "豉汁素肉片",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Pork Slice with Black Pepper",
+      "name_local": "黑胡椒肉片",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Vege Pork Fried Ginger",
+      "name_local": "姜丝炒素肉",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Sweet and Sour Vege Pork",
+      "name_local": "咕噜素肉",
+      "base_price": "10",
+      "variant_count": 0
+    },
+    {
+      "name": "Yam Ring",
+      "name_local": "佛钵飘香",
+      "base_price": "20",
+      "variant_count": 0
+    },
+    {
+      "name": "Rice",
+      "name_local": "白饭",
+      "base_price": "0.70",
+      "variant_count": 0
+    },
+    {
+      "name": "Egg",
+      "name_local": "加蛋",
+      "base_price": "1.00",
+      "variant_count": 0
+    },
+    {
+      "name": "Add on Mushroom",
+      "name_local": "加鲜菇",
+      "base_price": "4.00",
+      "variant_count": 0,
+      "check": true
+    },
+    {
+      "name": "Add on Vegetarian",
+      "name_local": "加素料",
+      "base_price": "2.00",
+      "variant_count": 0,
+      "check": true
+    },
+    {
+      "name": "Add on Petai",
+      "name_local": "加臭豆",
+      "base_price": "5.00",
+      "variant_count": 0
+    }
+  ]
+}

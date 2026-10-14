@@ -19,3 +19,6 @@ dashboard/dist/
 # Tooling caches
 .pytest_cache/
 *.tsbuildinfo
+
+# Catalog eval output
+tests/eval_data/out/

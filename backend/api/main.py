@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 
 from backend.api.config import Settings, get_settings
-from backend.api.routes import health
+from backend.api.routes import health, shops
 from backend.api.spa import spa_router
 from backend.store import get_store
 
@@ -15,6 +15,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.store = get_store(settings)
 
     app.include_router(health.router)
+    app.include_router(shops.router)
 
     # Later: mount the MCP server at /mcp and include the UCP router (/.well-known/ucp)
     # here, BEFORE the SPA catch-all below.
