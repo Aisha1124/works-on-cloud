@@ -1,0 +1,374 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Hawker Receipt — design tokens (values from CLAUDE.md)
+   ------------------------------------------------------------------ */
+:root {
+  --paper: #F4EDE1;
+  --receipt: #FFFDF8;
+  --ink: #1C1A17;
+  --chili: #D7261E;
+  --pandan: #2F7D4F;
+  --turmeric: #F2B705;
+  --muted: #7A7064;
+
+  /* Derived. --muted only passes AA on --receipt; use --ink-soft for
+     secondary text that sits directly on --paper. */
+  --ink-soft: color-mix(in srgb, var(--ink) 78%, var(--paper));
+  --turmeric-tint: color-mix(in srgb, var(--turmeric) 28%, var(--receipt));
+
+  --hard-shadow: 4px 4px 0 var(--ink);
+  --hard-shadow-sm: 2px 2px 0 var(--ink);
+
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-receipt: var(--receipt);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-chili: var(--chili);
+  --color-pandan: var(--pandan);
+  --color-turmeric: var(--turmeric);
+  --color-turmeric-tint: var(--turmeric-tint);
+  --color-muted: var(--muted);
+
+  --font-display: "Bricolage Grotesque", "Arial Black", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --shadow-hard: var(--hard-shadow);
+  --shadow-hard-sm: var(--hard-shadow-sm);
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--paper);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    min-height: 100dvh;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+  }
+
+  /* 3px turmeric focus ring. Offset 0 on bordered controls so the ring
+     sits against the ink border (keeps 3:1 against an adjacent colour). */
+  :focus-visible {
+    outline: 3px solid var(--turmeric);
+    outline-offset: 2px;
+  }
+  a:focus-visible {
+    outline-offset: 0;
+    background: var(--turmeric);
+    color: var(--ink);
+  }
+  ::selection {
+    background: var(--turmeric);
+    color: var(--ink);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Components that need more than utilities
+   ------------------------------------------------------------------ */
+@layer components {
+  .focus-ring:focus-visible,
+  .focus-ring[data-force="focus"] {
+    outline: 3px solid var(--turmeric);
+    outline-offset: 0;
+  }
+
+  /* Button: hard shadow, lifts on hover, presses into its shadow. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 2px solid var(--ink);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: var(--hard-shadow);
+    transition: transform 90ms ease-out, box-shadow 90ms ease-out, background-color 120ms;
+  }
+  .btn-md { min-height: 2.75rem; padding: 0 1.125rem; font-size: 1rem; }
+  .btn-sm { min-height: 2.25rem; padding: 0 0.75rem; font-size: 0.875rem; box-shadow: var(--hard-shadow-sm); }
+  .btn-primary { background: var(--chili); color: var(--receipt); }
+  .btn-secondary { background: var(--paper); color: var(--ink); }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: transparent; box-shadow: none; }
+
+  .btn:not(:disabled):hover,
+  .btn[data-force="hover"] {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  .btn-sm:not(:disabled):hover,
+  .btn-sm[data-force="hover"] { box-shadow: 3px 3px 0 var(--ink); }
+  .btn-ghost:not(:disabled):hover,
+  .btn-ghost[data-force="hover"] {
+    transform: none;
+    box-shadow: none;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    border-color: var(--ink);
+  }
+  .btn:not(:disabled):active,
+  .btn[data-force="active"] {
+    transform: translate(4px, 4px);
+    box-shadow: 0 0 0 var(--ink);
+  }
+  .btn-sm:not(:disabled):active,
+  .btn-sm[data-force="active"] { transform: translate(2px, 2px); }
+  .btn-ghost:not(:disabled):active,
+  .btn-ghost[data-force="active"] { transform: translate(1px, 1px); }
+  .btn:disabled {
+    cursor: not-allowed;
+    background: var(--paper);
+    color: var(--muted);
+    border-color: var(--muted);
+    border-style: dashed;
+    box-shadow: none;
+  }
+  .btn-ghost:disabled { border-color: transparent; background: transparent; }
+  .btn[aria-busy="true"]:disabled {
+    /* Loading keeps its colours; it is busy, not unavailable. */
+    cursor: progress;
+    border-style: solid;
+    border-color: var(--ink);
+    box-shadow: 0 0 0 var(--ink);
+    transform: translate(4px, 4px);
+  }
+  .btn-primary[aria-busy="true"]:disabled { background: var(--chili); color: var(--receipt); }
+  .btn-secondary[aria-busy="true"]:disabled { background: var(--paper); color: var(--ink); }
+  .btn-ghost[aria-busy="true"]:disabled { color: var(--ink); border-color: transparent; transform: none; }
+
+  /* Form controls */
+  .control {
+    width: 100%;
+    min-height: 2.75rem;
+    background: var(--receipt);
+    color: var(--ink);
+    border: 2px solid var(--ink);
+    padding: 0.5rem 0.75rem;
+    font: inherit;
+    border-radius: 0;
+    transition: box-shadow 90ms ease-out;
+  }
+  .control::placeholder { color: var(--muted); opacity: 1; }
+  .control:not(:disabled):hover,
+  .control[data-force="hover"] { box-shadow: var(--hard-shadow-sm); }
+  .control:focus-visible,
+  .control[data-force="focus"] {
+    outline: 3px solid var(--turmeric);
+    outline-offset: 0;
+    box-shadow: var(--hard-shadow);
+  }
+  .control[aria-invalid="true"] { border-color: var(--chili); box-shadow: 3px 3px 0 var(--chili); }
+  .control:disabled {
+    cursor: not-allowed;
+    background: var(--paper);
+    color: var(--muted);
+    border-style: dashed;
+    border-color: var(--muted);
+  }
+  select.control {
+    appearance: none;
+    padding-right: 2.5rem;
+    cursor: pointer;
+  }
+  textarea.control { min-height: 6rem; resize: vertical; line-height: 1.45; }
+
+  /* Toggle switch */
+  .toggle-track {
+    position: relative;
+    flex: none;
+    width: 3.25rem;
+    height: 1.75rem;
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    box-shadow: var(--hard-shadow-sm);
+    cursor: pointer;
+    transition: background-color 140ms, box-shadow 90ms, transform 90ms;
+  }
+  .toggle-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 1.25rem;
+    height: 1.25rem;
+    background: var(--ink);
+    transition: transform 160ms cubic-bezier(0.3, 1.4, 0.6, 1), background-color 140ms;
+  }
+  .toggle-track[aria-checked="true"] { background: var(--pandan); }
+  .toggle-track[aria-checked="true"]::after { transform: translateX(1.5rem); background: var(--receipt); }
+  .toggle-track:not(:disabled):hover,
+  .toggle-track[data-force="hover"] { box-shadow: 3px 3px 0 var(--ink); }
+  .toggle-track:not(:disabled):active { transform: translate(2px, 2px); box-shadow: none; }
+  .toggle-track:focus-visible,
+  .toggle-track[data-force="focus"] { outline: 3px solid var(--turmeric); outline-offset: 0; }
+  .toggle-track:disabled {
+    cursor: not-allowed;
+    border-style: dashed;
+    border-color: var(--muted);
+    box-shadow: none;
+    background: var(--paper);
+  }
+  .toggle-track:disabled::after { background: var(--muted); }
+
+  /* Receipt: zigzag torn edges via mask; outline + hard shadow follow the
+     torn shape because they are drop-shadows on the wrapper. */
+  .receipt-wrap {
+    filter:
+      drop-shadow(2px 0 0 var(--ink))
+      drop-shadow(-2px 0 0 var(--ink))
+      drop-shadow(0 2px 0 var(--ink))
+      drop-shadow(0 -2px 0 var(--ink))
+      drop-shadow(4px 4px 0 var(--ink));
+  }
+  .receipt-paper {
+    --zz: 20px;
+    background: var(--receipt);
+  }
+  .receipt-paper[data-edge="bottom"] {
+    padding-bottom: calc(var(--zz) / 2 + 1rem);
+    mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--zz) 100%;
+  }
+  .receipt-paper[data-edge="both"] {
+    padding-top: calc(var(--zz) / 2 + 1rem);
+    padding-bottom: calc(var(--zz) / 2 + 1rem);
+    mask:
+      conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / var(--zz) 51% repeat-x,
+      conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--zz) 51% repeat-x;
+  }
+
+  .leader {
+    flex: 1 1 1.5rem;
+    min-width: 1.5rem;
+    align-self: baseline;
+    height: 0;
+    border-bottom: 2px dotted var(--muted);
+    position: relative;
+    top: -0.3em;
+  }
+
+  /* Rubber stamp */
+  .stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.2em 0.6em 0.15em;
+    font-family: var(--font-display);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    color: var(--stamp-ink);
+    background: color-mix(in srgb, var(--receipt) 85%, transparent);
+    border: 3px double var(--stamp-line);
+    outline: 1.5px solid var(--stamp-line);
+    outline-offset: 2px;
+    transform: rotate(-3deg);
+    border-radius: 3px;
+  }
+  .stamp-approved { --stamp-ink: var(--pandan); --stamp-line: var(--pandan); }
+  .stamp-rejected { --stamp-ink: var(--chili); --stamp-line: var(--chili); }
+  .stamp-held,
+  .stamp-check {
+    /* Turmeric text fails AA, so these use ink text on a turmeric tint. */
+    --stamp-ink: var(--ink);
+    --stamp-line: var(--ink);
+    background: var(--turmeric-tint);
+    border-color: var(--turmeric);
+  }
+  .stamp-check { border-style: dashed; border-width: 2.5px; }
+  .stamp[data-animate="true"] { animation: stamp-land 420ms cubic-bezier(0.2, 1.2, 0.4, 1) both; }
+
+  /* Signboard header: painted chili board with corner bolts. */
+  .signboard {
+    position: relative;
+    background:
+      radial-gradient(circle at 12px 12px, var(--ink) 3px, #0000 3.5px),
+      radial-gradient(circle at calc(100% - 12px) 12px, var(--ink) 3px, #0000 3.5px),
+      radial-gradient(circle at 12px calc(100% - 12px), var(--ink) 3px, #0000 3.5px),
+      radial-gradient(circle at calc(100% - 12px) calc(100% - 12px), var(--ink) 3px, #0000 3.5px),
+      var(--chili);
+    color: var(--receipt);
+    border: 2px solid var(--ink);
+    box-shadow: var(--hard-shadow);
+  }
+  .signboard::before {
+    /* Painted inner keyline */
+    content: "";
+    position: absolute;
+    inset: 6px 22px;
+    border-top: 2px solid color-mix(in srgb, var(--receipt) 55%, transparent);
+    border-bottom: 2px solid color-mix(in srgb, var(--receipt) 55%, transparent);
+    pointer-events: none;
+  }
+
+  /* Receipt-printer risk gauge segments */
+  .meter-seg {
+    height: 1.75rem;
+    border: 1.5px solid var(--ink);
+    background: repeating-linear-gradient(0deg, #0000 0 3px, color-mix(in srgb, var(--muted) 30%, transparent) 3px 4px);
+  }
+  .meter-seg[data-on="true"] {
+    background: var(--meter-color);
+    animation: print-in 260ms steps(4, end) both;
+    animation-delay: calc(var(--i) * 28ms);
+  }
+
+  /* Skeleton: rows printing out line by line */
+  .skeleton-line {
+    height: 0.75rem;
+    background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--muted) 45%, transparent) 0 6px, #0000 6px 9px);
+    animation: print-line 1.8s steps(10, end) infinite both;
+    animation-delay: calc(var(--i) * 180ms);
+  }
+
+  .toast-enter { animation: toast-in 220ms cubic-bezier(0.2, 1.1, 0.4, 1) both; }
+  .print-in { animation: print-in 320ms steps(5, end) both; animation-delay: calc(var(--i, 0) * 70ms); }
+}
+
+@keyframes stamp-land {
+  0% { opacity: 0; transform: scale(1.8) rotate(-14deg); }
+  60% { opacity: 1; transform: scale(0.92) rotate(-2deg); }
+  80% { transform: scale(1.04) rotate(-3.5deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-3deg); }
+}
+@keyframes print-in {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes print-line {
+  0% { clip-path: inset(0 100% 0 0); }
+  60%, 100% { clip-path: inset(0 0 0 0); }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

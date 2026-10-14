@@ -15,3 +15,7 @@ data/
 # Dashboard
 node_modules/
 dashboard/dist/
+
+# Tooling caches
+.pytest_cache/
+*.tsbuildinfo

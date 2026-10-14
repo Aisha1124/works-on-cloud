@@ -1,0 +1,135 @@
+"""Shared data models used by the API, MCP server, UCP routes and agents.
+
+Money is always Decimal. In JSON it is a string (e.g. "12.50"), never a float.
+"""
+
+from datetime import UTC, datetime
+from decimal import Decimal
+from enum import StrEnum
+from typing import Any
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
+
+
+def new_id() -> str:
+    return uuid4().hex[:12]
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class Channel(StrEnum):
+    mcp = "mcp"
+    ucp = "ucp"
+    dashboard = "dashboard"
+
+
+class RiskLevel(StrEnum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
+class OrderStatus(StrEnum):
+    auto_approved = "auto_approved"
+    pending_approval = "pending_approval"
+    approved = "approved"
+    rejected = "rejected"
+    ready = "ready"
+    done = "done"
+
+
+class Actor(StrEnum):
+    owner = "owner"
+    system = "system"
+    catalog_agent = "catalog_agent"
+    risk_agent = "risk_agent"
+    shopper_agent = "shopper_agent"
+    external_agent = "external_agent"
+
+
+class Shop(BaseModel):
+    id: str = Field(default_factory=new_id)
+    slug: str
+    name: str
+    tagline: str = ""
+    shop_type: str = ""
+    address: str = ""
+    hours: str = ""
+    phone: str = ""
+    currency: str = "SGD"
+    published: bool = False
+    auto_approve_limit: Decimal = Decimal("150")
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class Variant(BaseModel):
+    label: str  # size or pack, e.g. "20 pcs"
+    price: Decimal
+
+
+class ProductOption(BaseModel):
+    name: str  # e.g. "Flavour"
+    choices: list[str] = Field(default_factory=list)
+
+
+class Product(BaseModel):
+    id: str = Field(default_factory=new_id)
+    shop_id: str
+    name: str
+    name_local: str = ""
+    category: str = ""
+    base_price: Decimal | None = None
+    unit: str = ""
+    variants: list[Variant] = Field(default_factory=list)
+    options: list[ProductOption] = Field(default_factory=list)
+    available: bool = True
+    description: str = ""
+    confidence: float = Field(default=1.0, ge=0, le=1)
+
+
+class OrderItem(BaseModel):
+    product_id: str
+    name: str
+    variant: str | None = None
+    options: dict[str, str] = Field(default_factory=dict)  # option name -> chosen value
+    qty: int = Field(ge=1)
+    unit_price: Decimal
+    line_total: Decimal
+
+
+class Risk(BaseModel):
+    score: int = Field(ge=0, le=100)
+    level: RiskLevel
+    reasons: list[str] = Field(default_factory=list)
+    explanation: str = ""
+
+
+class Order(BaseModel):
+    id: str = Field(default_factory=new_id)
+    shop_id: str
+    items: list[OrderItem]
+    total: Decimal
+    customer_name: str
+    customer_phone: str
+    pickup_at: datetime
+    note: str = ""
+    channel: Channel
+    agent_name: str = ""
+    risk: Risk | None = None
+    status: OrderStatus
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class AuditEvent(BaseModel):
+    id: str = Field(default_factory=new_id)
+    shop_id: str
+    at: datetime = Field(default_factory=utc_now)
+    actor: Actor
+    action: str
+    entity_type: str
+    entity_id: str
+    summary: str
+    details: dict[str, Any] = Field(default_factory=dict)
