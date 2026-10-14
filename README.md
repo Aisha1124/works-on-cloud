@@ -8,15 +8,17 @@ Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
 ## Team: Works On Cloud
 - Aisha Siddiqua (Lead): agents, AI, MCP
-- Bijay Pathak: infrastructure, CI/CD, security, deck
+- Bijay Pathak: infrastructure, deployment, security, deck
 
 ## Stack
-Gemini · Google ADK · Cloud Run · Firestore · Cloud Storage · Firebase Hosting · Secret Manager · Cloud Build
+Gemini · Google ADK · Cloud Run · Firestore · Cloud Storage · Secret Manager
+
+One Cloud Run container (asia-southeast1) serves the API, the MCP server, the UCP endpoints and the built dashboard. It is deployed with `gcloud run deploy --source .`, which uses Cloud Build only to build the image.
 
 ## Structure
 - `agents/`: ADK + Gemini agents
 - `backend/`: FastAPI APIs, MCP server, UCP endpoint
 - `dashboard/`: owner dashboard
-- `infra/`: deployment and CI/CD
+- `infra/`: deploy docs
 - `docs/`: deck and architecture
 - `tests/`: evaluation data

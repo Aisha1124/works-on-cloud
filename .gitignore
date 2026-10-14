@@ -2,3 +2,16 @@
 *.json.key
 service-account*.json
 secrets/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local dev data
+uploads/
+data/
+
+# Dashboard
+node_modules/
+dashboard/dist/
