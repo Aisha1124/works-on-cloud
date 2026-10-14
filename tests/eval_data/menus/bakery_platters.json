@@ -1,7 +1,6 @@
 {
-  "_note": "Ground truth drafted by Claude from the photo on 2026-10-15. Please review. Single-pack items: base_price = pack price, unit = pack, 0 variants.",
   "partial": false,
-  "shop_name": "Mirana Cake House",
+  "shop_name": "Sample Bakery",
   "products": [
     {
       "name": "Assorted Mini Bun",

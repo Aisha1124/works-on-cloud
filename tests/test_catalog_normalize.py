@@ -166,11 +166,11 @@ def dp(name, price=None, variants=(), confidence=0.9, options=()):
 
 
 def test_merge_dedupes_by_normalised_name():
-    a = CatalogDraft(shop_name_guess="Mirana", products=[dp("Mini Egg Tart", "24")])
+    a = CatalogDraft(shop_name_guess="Sample Bakery", products=[dp("Mini Egg Tart", "24")])
     b = CatalogDraft(products=[dp("mini egg tart", "24"), dp("Mini Cream Puff", "24")])
     merged = merge_drafts([a, b])
     assert [p.name for p in merged.products] == ["Mini Egg Tart", "Mini Cream Puff"]
-    assert merged.shop_name_guess == "Mirana"
+    assert merged.shop_name_guess == "Sample Bakery"
     assert merged.warnings == []
 
 

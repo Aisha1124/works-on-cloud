@@ -36,7 +36,7 @@ def photo() -> tuple[str, bytes, str]:
 
 
 DRAFT = CatalogDraft(
-    shop_name_guess="Mirana Cake House",
+    shop_name_guess="Sample Bakery",
     categories=["Mini Cake Platters"],
     products=[
         DraftProduct(name="Mini Banana Cake", category="Mini Cake Platters",
@@ -82,8 +82,8 @@ def test_draft_creates_shop_products_images_and_audit(api, app, fake_extract, tm
     body = r.json()
 
     shop = body["shop"]
-    assert shop["name"] == "Mirana Cake House"
-    assert shop["slug"].startswith("mirana-cake-house-")
+    assert shop["name"] == "Sample Bakery"
+    assert shop["slug"].startswith("sample-bakery-")
     assert shop["published"] is False
     assert [p["name"] for p in body["products"]] == ["Mini Banana Cake", "Kuih Lapis"]
     assert body["products"][0]["base_price"] == "24"
