@@ -47,5 +47,7 @@ class FirestoreStore(Store):
     def add_audit_event(self, event: AuditEvent) -> AuditEvent:
         raise NotImplementedError(_MSG)
 
-    def list_audit_events(self, shop_id: str, limit: int = 100) -> list[AuditEvent]:
+    def list_audit_events(
+        self, shop_id: str, limit: int = 100, offset: int = 0
+    ) -> list[AuditEvent]:
         raise NotImplementedError(_MSG)

@@ -48,5 +48,7 @@ class Store(ABC):
     def add_audit_event(self, event: AuditEvent) -> AuditEvent: ...
 
     @abstractmethod
-    def list_audit_events(self, shop_id: str, limit: int = 100) -> list[AuditEvent]:
-        """Newest first."""
+    def list_audit_events(
+        self, shop_id: str, limit: int = 100, offset: int = 0
+    ) -> list[AuditEvent]:
+        """Newest first. Skips `offset` events, then returns up to `limit`."""

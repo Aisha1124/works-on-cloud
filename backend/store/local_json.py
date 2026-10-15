@@ -119,6 +119,8 @@ class LocalJsonStore(Store):
     def add_audit_event(self, event: AuditEvent) -> AuditEvent:
         return self._put("audit_events", event.id, event)
 
-    def list_audit_events(self, shop_id: str, limit: int = 100) -> list[AuditEvent]:
+    def list_audit_events(
+        self, shop_id: str, limit: int = 100, offset: int = 0
+    ) -> list[AuditEvent]:
         events = [e for e in self._all("audit_events", AuditEvent) if e.shop_id == shop_id]
-        return self._newest_first(events, key=lambda e: e.at)[:limit]
+        return self._newest_first(events, key=lambda e: e.at)[offset : offset + limit]

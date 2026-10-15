@@ -1,9 +1,7 @@
-import asyncio
 import base64
 import io
 import json
 import time
-from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -12,6 +10,8 @@ from PIL import Image
 from agents.catalog import extract as ex
 from agents.catalog.images import MAX_SIDE, ImageError, preprocess
 from backend.api.config import Settings
+from tests import gemini_fake
+from tests.gemini_fake import FakeStatusError
 
 GOOD = {
     "shop_name_guess": "Ah Ma Kueh",
@@ -38,33 +38,8 @@ def jpeg(w=100, h=50) -> bytes:
     return buf.getvalue()
 
 
-class FakeInteractions:
-    """Plays back a script: each item is a JSON string to return, an exception to raise,
-    or a number of seconds to hang (to test the wall-clock deadline)."""
-
-    def __init__(self, script):
-        self.script = list(script)
-        self.calls = []
-
-    async def create(self, **kwargs):
-        self.calls.append(kwargs)
-        item = self.script.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        if isinstance(item, (int, float)):
-            await asyncio.sleep(item)
-            item = json.dumps(GOOD)
-        return SimpleNamespace(output_text=item)
-
-
 def fake_client(*script):
-    return SimpleNamespace(aio=SimpleNamespace(interactions=FakeInteractions(script)))
-
-
-class FakeStatusError(Exception):
-    def __init__(self, status_code):
-        super().__init__(f"HTTP {status_code}")
-        self.status_code = status_code
+    return gemini_fake.fake_client(*script, hang_result=json.dumps(GOOD))
 
 
 @pytest.fixture

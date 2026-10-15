@@ -2,10 +2,11 @@
 
 import re
 import unicodedata
+from decimal import Decimal
 from pathlib import PurePath
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agents.catalog import extract as catalog
 from agents.catalog.images import ImageError
@@ -82,3 +83,40 @@ async def create_draft(request: Request, images: list[UploadFile] = File(default
         },
     )
     return DraftResponse(shop=shop, products=products, warnings=draft.warnings)
+
+
+class ShopSettingsUpdate(BaseModel):
+    """Only the fields sent are changed."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    tagline: str | None = Field(default=None, max_length=160)
+    address: str | None = Field(default=None, max_length=200)
+    hours: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=30)
+    auto_approve_limit: Decimal | None = Field(default=None, ge=0, le=100000, decimal_places=2)
+
+
+@router.patch("/{shop_id}", response_model=Shop)
+def update_shop_settings(request: Request, shop_id: str, body: ShopSettingsUpdate) -> Shop:
+    store = request.app.state.store
+    shop = store.get_shop(shop_id)
+    if shop is None:
+        raise HTTPException(status_code=404, detail="Shop not found.")
+    changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=400, detail="Nothing to change.")
+    before = {k: getattr(shop, k) for k in changes}
+    shop = shop.model_copy(update=changes)
+    store.save_shop(shop)
+    log_event(
+        store,
+        shop_id=shop.id,
+        actor=Actor.owner,
+        action="shop_settings_updated",
+        entity_type="shop",
+        entity_id=shop.id,
+        summary="Owner changed " + ", ".join(k.replace("_", " ") for k in changes),
+        details={"before": {k: str(v) for k, v in before.items()},
+                 "after": {k: str(v) for k, v in changes.items()}},
+    )
+    return shop

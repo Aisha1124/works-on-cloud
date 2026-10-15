@@ -33,3 +33,18 @@ def test_log_event_rejects_unknown_actor(store):
             store, shop_id="s1", actor="hacker", action="x",
             entity_type="shop", entity_id="s1", summary="nope",
         )
+
+
+def test_audit_events_paginate_with_offset(store):
+    ids = [
+        log_event(
+            store, shop_id="s1", actor="system", action=f"a{i}",
+            entity_type="shop", entity_id="s1", summary=f"event {i}",
+        ).id
+        for i in range(5)
+    ]
+    newest_first = list(reversed(ids))
+    assert [e.id for e in store.list_audit_events("s1", limit=2)] == newest_first[:2]
+    assert [e.id for e in store.list_audit_events("s1", limit=2, offset=2)] == newest_first[2:4]
+    assert [e.id for e in store.list_audit_events("s1", limit=2, offset=4)] == newest_first[4:]
+    assert store.list_audit_events("s1", limit=2, offset=10) == []

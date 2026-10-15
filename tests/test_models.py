@@ -69,3 +69,27 @@ def test_order_rejects_bad_status_and_channel():
         make_order(status="shipped")
     with pytest.raises(ValidationError):
         make_order(channel="email")
+
+
+def test_risk_explanation_defaults_empty_and_round_trips():
+    assert Risk(score=0, level="low").explanation == ""
+    order = make_order(risk=Risk(score=65, level="high", reasons=["Fake phone"],
+                                 explanation="The phone number is not a Singapore number."))
+    again = Order.model_validate(order.model_dump(mode="json"))
+    assert again.risk.explanation == "The phone number is not a Singapore number."
+
+
+def test_order_rejection_reason_defaults_empty():
+    assert make_order().rejection_reason == ""
+    assert make_order(rejection_reason="Sold out").rejection_reason == "Sold out"
+
+
+def test_to_sg_reads_naive_as_singapore_time_and_converts_aware():
+    from datetime import timedelta
+
+    from backend.timeutil import SGT, now_sg, to_sg
+
+    naive = datetime(2026, 10, 17, 10, 0)
+    assert to_sg(naive) == datetime(2026, 10, 17, 10, 0, tzinfo=SGT)
+    assert to_sg(datetime(2026, 10, 17, 2, 0, tzinfo=UTC)).hour == 10
+    assert now_sg().utcoffset() == timedelta(hours=8)

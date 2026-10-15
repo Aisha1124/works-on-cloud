@@ -1,27 +1,20 @@
 """Catalog agent: menu photo(s) -> CatalogDraft, using Gemini vision with structured output.
 
-Uses the Gemini Interactions API (google-genai >= 2.3) through the async client, so the
-45 s limit is a real wall-clock deadline (asyncio.wait_for cancels the request); the SDK's
-own `timeout` is only a per-read socket timeout. Photos are read in parallel, one call per
-photo, so one bad photo becomes a warning instead of losing the whole upload. Results are
-merged and deduped in Python (normalize.py).
+The Gemini call itself (Interactions API, wall-clock deadline, one retry) lives in
+agents/gemini.py. Photos are read in parallel, one call per photo, so one bad photo becomes a
+warning instead of losing the whole upload. Results are merged and deduped in Python
+(normalize.py).
 """
 
 import asyncio
 import base64
-import logging
-import time
 
-from google import genai
-from google.genai import types
-
+from agents import gemini
 from agents.catalog.images import preprocess
 from agents.catalog.normalize import merge_drafts, to_draft
 from agents.catalog.prompt import SYSTEM_PROMPT, USER_PROMPT
 from agents.catalog.schema import CatalogDraft, GeminiCatalog
 from backend.api.config import Settings, get_settings
-
-log = logging.getLogger(__name__)
 
 TIMEOUT_S = 45
 ATTEMPTS = 2  # first try + one retry
@@ -56,68 +49,38 @@ class CatalogExtractionError(RuntimeError):
         super().__init__(message)
 
 
-def make_client(settings: Settings) -> genai.Client:
-    if not settings.gemini_api_key or not settings.gemini_api_key.get_secret_value():
-        raise CatalogExtractionError("Photo reading is not set up yet (GEMINI_API_KEY is missing).")
-    # The SDK retries up to 3x by default; we do exactly one retry ourselves.
-    return genai.Client(
-        api_key=settings.gemini_api_key.get_secret_value(),
-        http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
-    )
-
-
-def _is_retryable(exc: Exception) -> bool:
-    """Retry timeouts, network errors, 408/429/5xx and invalid JSON. Not other 4xx."""
-    status = getattr(exc, "status_code", None)
-    if isinstance(status, int) and 400 <= status < 500:
-        return status in (408, 429)
-    return True
+def make_client(settings: Settings):
+    try:
+        return gemini.make_client(settings)
+    except gemini.GeminiNotConfigured as exc:
+        raise CatalogExtractionError(
+            "Photo reading is not set up yet (GEMINI_API_KEY is missing)."
+        ) from exc
 
 
 async def _call_gemini(client, model: str, jpeg: bytes) -> GeminiCatalog:
-    last: Exception | None = None
-    for attempt in range(1, ATTEMPTS + 1):
-        started = time.monotonic()
-        try:
-            interaction = await asyncio.wait_for(
-                client.aio.interactions.create(
-                    model=model,
-                    system_instruction=SYSTEM_PROMPT,
-                    input=[
-                        {"type": "text", "text": USER_PROMPT},
-                        {
-                            "type": "image",
-                            "data": base64.b64encode(jpeg).decode("ascii"),
-                            "mime_type": "image/jpeg",
-                            "resolution": IMAGE_RESOLUTION,
-                        },
-                    ],
-                    response_format={
-                        "type": "text",
-                        "mime_type": "application/json",
-                        "schema": GeminiCatalog.model_json_schema(),
-                    },
-                    generation_config={"thinking_level": THINKING_LEVEL, "temperature": 0},
-                    timeout=TIMEOUT_S,
-                ),
-                timeout=TIMEOUT_S,
-            )
-            result = GeminiCatalog.model_validate_json(interaction.output_text or "")
-            usage = getattr(interaction, "usage", None)
-            log.info(
-                "catalog extraction ok in %.1fs (attempt %d, %s output tokens)",
-                time.monotonic() - started, attempt, getattr(usage, "total_output_tokens", "?"),
-            )
-            return result
-        except Exception as exc:  # timeouts, HTTP errors, no response, bad JSON
-            last = exc
-            log.warning(
-                "catalog extraction attempt %d failed after %.1fs: %s: %s",
-                attempt, time.monotonic() - started, type(exc).__name__, str(exc)[:300],
-            )
-            if not _is_retryable(exc):
-                break
-    raise CatalogExtractionError(_friendly_message(last)) from last
+    try:
+        return await gemini.call_structured(
+            client,
+            model=model,
+            system_instruction=SYSTEM_PROMPT,
+            input=[
+                {"type": "text", "text": USER_PROMPT},
+                {
+                    "type": "image",
+                    "data": base64.b64encode(jpeg).decode("ascii"),
+                    "mime_type": "image/jpeg",
+                    "resolution": IMAGE_RESOLUTION,
+                },
+            ],
+            schema=GeminiCatalog,
+            timeout=TIMEOUT_S,
+            attempts=ATTEMPTS,
+            thinking_level=THINKING_LEVEL,
+            label="catalog extraction",
+        )
+    except Exception as exc:
+        raise CatalogExtractionError(_friendly_message(exc)) from exc
 
 
 async def extract_catalog_async(

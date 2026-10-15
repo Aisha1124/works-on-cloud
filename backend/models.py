@@ -120,6 +120,7 @@ class Order(BaseModel):
     agent_name: str = ""
     risk: Risk | None = None
     status: OrderStatus
+    rejection_reason: str = ""
     created_at: datetime = Field(default_factory=utc_now)
 
 
