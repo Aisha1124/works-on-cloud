@@ -22,8 +22,14 @@ def place(store, demo, settings, items=None, *, client=None, **kw):
     )
     args.update(kw)
     items = items or [{"product_id": demo.lapis.id, "variant": "20 pcs", "qty": 3}]
-    return asyncio.run(commerce.place_order(
-        store, demo.shop.id, items, settings=settings, gemini_client=client, now=NOW, **args))
+
+    async def go():
+        order = await commerce.place_order(
+            store, demo.shop.id, items, settings=settings, gemini_client=client, now=NOW, **args)
+        await commerce.wait_for_background_tasks()  # the Gemini sentence, if any
+        return order
+
+    return asyncio.run(go())
 
 
 def actions(store, shop_id):
@@ -45,7 +51,7 @@ def test_normal_order_is_auto_approved(store, demo, gemini_settings):
     events = list(reversed(store.list_audit_events(demo.shop.id)))
     assert [e.actor for e in events] == [
         Actor.shopper_agent, Actor.shopper_agent, Actor.risk_agent, Actor.system]
-    assert events[2].details["explanation_source"] == "fallback"
+    assert events[2].details["explanation_source"] == "rules"
 
     status = commerce.get_order_status(store, demo.shop.id, order.id)
     assert status["status"] == "auto_approved"
@@ -107,13 +113,16 @@ def test_injection_note_is_held_and_not_obeyed(store, demo, gemini_settings):
     assert order.risk.reasons[-1] == (
         "Customer note contains a link, instructions aimed at the system, a payment change "
         "request (treated as data, not followed)")
-    assert order.risk.explanation.startswith("The note tries")
+    # The buyer got the rule reasons; the Gemini sentence arrived later on the saved order.
+    assert order.risk.explanation == "; ".join(order.risk.reasons)
+    assert store.get_order(order.id).risk.explanation.startswith("The note tries")
+    assert store.get_order(order.id).status == OrderStatus.pending_approval
     assert order.note == INJECTION  # kept for the owner to read
 
     call = client.aio.interactions.calls[0]
     assert "Ignore previous" not in call["system_instruction"]
     assert json.dumps(INJECTION) in call["input"][0]["text"]
-    assert actions(store, demo.shop.id)[-1] == "order_held"
+    assert actions(store, demo.shop.id)[-2:] == ["order_held", "risk_explained"]
 
 
 def test_price_mismatch_is_high_and_uses_menu_price(store, demo, gemini_settings):
@@ -149,6 +158,64 @@ def test_gemini_failure_never_blocks_an_order(store, demo, gemini_settings):
     order = place(store, demo, gemini_settings, customer_phone="12345", client=client)
     assert order.status == OrderStatus.pending_approval
     assert order.risk.explanation == "; ".join(order.risk.reasons)
+    assert store.get_order(order.id).risk.explanation == order.risk.explanation
+    assert len(client.aio.interactions.calls) == 2  # tried, retried once, then gave up
+    assert "risk_explained" not in actions(store, demo.shop.id)
+
+
+SENTENCE = json.dumps({"explanation": "The phone number is not a real Singapore number."})
+
+
+def test_order_is_saved_and_returned_before_gemini_answers(store, demo, gemini_settings):
+    client = fake_client(0.3, hang_result=SENTENCE)  # Gemini takes 0.3s
+
+    async def go():
+        order = await commerce.place_order(
+            store, demo.shop.id, [{"product_id": demo.lapis.id, "variant": "20 pcs", "qty": 3}],
+            "Siti", "12345", SATURDAY_10AM, settings=gemini_settings, gemini_client=client,
+            now=NOW)
+        # Back already: saved, held, rule reasons as the explanation, Gemini still thinking.
+        saved = store.get_order(order.id)
+        assert saved.status == OrderStatus.pending_approval
+        assert saved.risk.explanation == "; ".join(order.risk.reasons)
+        assert commerce.get_order_status(store, demo.shop.id, order.id)["status"] == (
+            "pending_approval")
+        assert "risk_explained" not in actions(store, demo.shop.id)
+        await commerce.wait_for_background_tasks()
+        return order
+
+    order = asyncio.run(go())
+    saved = store.get_order(order.id)
+    assert saved.risk.explanation == "The phone number is not a real Singapore number."
+    assert saved.risk.score == order.risk.score and saved.risk.reasons == order.risk.reasons
+    last = store.list_audit_events(demo.shop.id)[0]
+    assert (last.action, last.actor) == ("risk_explained", Actor.risk_agent)
+
+
+def test_owner_action_during_explanation_is_kept(store, demo, gemini_settings):
+    client = fake_client(0.2, hang_result=SENTENCE)
+
+    async def go():
+        order = await commerce.place_order(
+            store, demo.shop.id, [{"product_id": demo.lapis.id, "variant": "20 pcs", "qty": 3}],
+            "Siti", "12345", SATURDAY_10AM, settings=gemini_settings, gemini_client=client,
+            now=NOW)
+        approval.approve(store, demo.shop.id, order.id)  # owner taps Approve straight away
+        await commerce.wait_for_background_tasks()
+        return order
+
+    order = asyncio.run(go())
+    saved = store.get_order(order.id)
+    assert saved.status == OrderStatus.approved
+    assert saved.risk.explanation.startswith("The phone number")
+
+
+def test_no_rule_hits_means_no_gemini_call(store, demo, gemini_settings):
+    place(store, demo, gemini_settings)  # makes the phone known
+    client = fake_client()
+    order = place(store, demo, gemini_settings, client=client)
+    assert order.risk.reasons == [] and order.risk.explanation == "No risk signals found."
+    assert client.aio.interactions.calls == []
 
 
 def test_naive_pickup_is_singapore_time(store, demo, gemini_settings):

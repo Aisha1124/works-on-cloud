@@ -7,6 +7,8 @@ Errors a buyer agent should see are raised as OrderValidationError (a list of pl
 or approval.OrderNotFound.
 """
 
+import asyncio
+import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -17,9 +19,11 @@ from agents.approval import service as approval
 from agents.risk import scorer as risk
 from backend.api.config import Settings, get_settings
 from backend.audit import log_event
-from backend.models import Actor, Channel, Order, OrderItem, OrderStatus, Product
+from backend.models import Actor, Channel, Order, OrderItem, OrderStatus, Product, Risk
 from backend.store.base import Store
 from backend.timeutil import now_sg, to_sg
+
+log = logging.getLogger(__name__)
 
 MAX_LINES = 20
 MIN_QTY, MAX_QTY = 1, 500
@@ -279,7 +283,10 @@ async def place_order(
 ) -> Order:
     """Quote -> risk check -> approval decision -> save. Every step is in the audit log.
 
-    Raises OrderValidationError for bad input. Never fails because of Gemini.
+    Returns as soon as the order is saved, with the rule reasons as the risk explanation. The
+    Gemini sentence is fetched in the background and replaces it on the saved order (audit
+    action risk_explained). Raises OrderValidationError for bad input. Never waits for or
+    fails because of Gemini.
     """
     settings = settings or get_settings()
     channel = Channel(channel)
@@ -328,14 +335,14 @@ async def place_order(
         total=quote.total, phone=customer_phone, agent_name=agent_name, pickup_at=pickup,
         note=note, price_mismatch=quote.price_mismatch, previous_orders=previous, now=now,
     )
-    order.risk, source = await risk.assess(facts, settings, gemini_client)
+    order.risk = risk.assess(facts)
     log_event(
         store, shop_id=shop_id, actor=Actor.risk_agent, action="risk_scored",
         entity_type="order", entity_id=order.id,
         summary=f"Risk {order.risk.level.value.upper()} {order.risk.score}/100",
         details={"score": order.risk.score, "level": order.risk.level.value,
                  "reasons": order.risk.reasons, "explanation": order.risk.explanation,
-                 "explanation_source": source, "mismatches": quote.mismatches},
+                 "explanation_source": "rules", "mismatches": quote.mismatches},
     )
 
     order.status, why = approval.decide(shop, order.risk, order.total)
@@ -350,7 +357,54 @@ async def place_order(
                  f"{order.risk.score}): {why}"),
         details={"why": why},
     )
+    if order.risk.reasons and settings.gemini_model:
+        _start_background(_explain_later(
+            store, order.id, order.risk.model_copy(), note, settings, gemini_client))
     return order
+
+
+# --- Risk explanation in the background ------------------------------------------------
+
+# Strong references, so running tasks aren't garbage-collected before they finish.
+_background: set[asyncio.Task] = set()
+
+
+def _start_background(coro) -> None:
+    task = asyncio.get_running_loop().create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+async def wait_for_background_tasks() -> None:
+    """Wait for pending risk explanations. For scripts and tests that close their event loop
+    right after placing orders; the server's loop keeps running so it never needs this."""
+    while _background:
+        await asyncio.gather(*list(_background), return_exceptions=True)
+
+
+async def _explain_later(store: Store, order_id: str, scored: Risk, note: str,
+                         settings: Settings, client) -> None:
+    """Ask Gemini for the owner-facing sentence and put it on the saved order. On any failure
+    the order keeps the rule reasons it was saved with. Never raises."""
+    try:
+        text, source = await risk.explain(scored, note, settings, client)
+        if source != "gemini":
+            return
+        # Re-read so an approve/reject that happened meanwhile is kept; only the
+        # explanation changes. No await between get and save.
+        order = store.get_order(order_id)
+        if order is None:
+            return
+        order.risk.explanation = text
+        store.save_order(order)
+        log_event(
+            store, shop_id=order.shop_id, actor=Actor.risk_agent, action="risk_explained",
+            entity_type="order", entity_id=order.id,
+            summary=f"Risk explanation for order {order.id}: {text}",
+            details={"explanation": text, "explanation_source": source},
+        )
+    except Exception:  # a background task must never crash the server
+        log.exception("background risk explanation failed for order %s", order_id)
 
 
 def get_order_status(store: Store, shop_id: str, order_id: str) -> dict[str, Any]:

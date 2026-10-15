@@ -214,6 +214,7 @@ def test_explain_uses_gemini_sentence(gemini_settings):
     assert call["timeout"] == scorer.EXPLAIN_TIMEOUT_S
     assert call["model"] == "test-model"
     assert call["response_format"]["schema"] == scorer.RiskExplanation.model_json_schema()
+    assert call["generation_config"]["thinking_level"] == "low"  # lowest on gemini-3.8-flash
 
 
 def test_note_is_sent_only_as_quoted_data(gemini_settings):

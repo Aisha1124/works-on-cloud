@@ -26,6 +26,9 @@ log = logging.getLogger(__name__)
 
 EXPLAIN_TIMEOUT_S = 10
 EXPLAIN_ATTEMPTS = 2  # first try + one retry
+# The lowest level gemini-3.8-flash supports (it has low/medium/high, default medium; no
+# "minimal"), per https://ai.google.dev/gemini-api/docs/thinking, checked 2026-10-15.
+EXPLAIN_THINKING_LEVEL = "low"
 NO_RISK_TEXT = "No risk signals found."
 
 # Points per rule.
@@ -344,6 +347,7 @@ async def explain(risk: Risk, note: str, settings: Settings, client=None) -> tup
             schema=RiskExplanation,
             timeout=EXPLAIN_TIMEOUT_S,
             attempts=EXPLAIN_ATTEMPTS,
+            thinking_level=EXPLAIN_THINKING_LEVEL,
             label="risk explanation",
         )
     except Exception as exc:  # not set up, quota used up, timeout, bad JSON...
@@ -355,10 +359,9 @@ async def explain(risk: Risk, note: str, settings: Settings, client=None) -> tup
     return text, "gemini"
 
 
-async def assess(
-    facts: OrderFacts, settings: Settings, client=None
-) -> tuple[Risk, str]:
-    """Score with the rules, then add the explanation. -> (risk, explanation source)."""
+def assess(facts: OrderFacts) -> Risk:
+    """Score with the rules. The explanation starts as the joined rule reasons; the Gemini
+    sentence (explain) replaces it later, in the background, so no order waits for Gemini."""
     risk = score_rules(facts)
-    risk.explanation, source = await explain(risk, facts.note, settings, client)
-    return risk, source
+    risk.explanation = fallback_explanation(risk)
+    return risk

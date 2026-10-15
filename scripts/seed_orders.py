@@ -60,9 +60,13 @@ async def main(live: bool) -> None:
                          {"product_id": lapis.id, "variant": "40 pcs", "qty": 2}],
         "Priya", "+65 8765 4321", tomorrow_11am, "", "mcp", "KampungCart Demo Shopper",
         actor=Actor.shopper_agent, settings=settings)
+    # Explanations are written in the background; let them land before the loop closes.
+    await commerce.wait_for_background_tasks()
 
     print(f"SHOP       {shop.id}")
-    for label, o in [("normal", normal), ("suspicious", suspicious), ("large", large)]:
+    for label, o in [("normal", store.get_order(normal.id)),
+                     ("suspicious", store.get_order(suspicious.id)),
+                     ("large", store.get_order(large.id))]:
         print(f"{label:<11}{o.id}  {o.status.value:<17} S${o.total:<8} "
               f"risk {o.risk.level.value.upper()} {o.risk.score}")
         print(f"           {o.risk.explanation}")
