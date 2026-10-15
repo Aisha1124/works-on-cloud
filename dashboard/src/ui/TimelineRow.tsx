@@ -1,4 +1,5 @@
-import { Bot, Cog, ScanText, ShieldAlert, ShoppingBag, User } from 'lucide-react'
+import { Bot, ChevronDown, Cog, ScanText, ShieldAlert, ShoppingBag, User } from 'lucide-react'
+import { useId, useState, type ReactNode } from 'react'
 import { cx } from './cx'
 
 export type Actor = 'owner' | 'system' | 'catalog_agent' | 'risk_agent' | 'shopper_agent' | 'external_agent'
@@ -28,15 +29,19 @@ export interface TimelineRowProps {
   actor: Actor
   action: string
   summary: string
+  /** Extra detail shown when the row is expanded (click the summary). */
+  details?: ReactNode
   /** Hide the connector line under the dot (last row). */
   last?: boolean
   className?: string
 }
 
 /** One audit-log event. Render a list of these inside an <ol>. */
-export function TimelineRow({ at, actor, action, summary, last = false, className }: TimelineRowProps) {
-  const { label, Icon, chip } = actorInfo[actor]
+export function TimelineRow({ at, actor, action, summary, details, last = false, className }: TimelineRowProps) {
+  const { label, Icon, chip } = actorInfo[actor] ?? actorInfo.system
   const date = new Date(at)
+  const [open, setOpen] = useState(false)
+  const detailsId = useId()
   return (
     <li className={cx('grid grid-cols-[1.25rem_1fr] gap-x-3 sm:grid-cols-[9.5rem_1.25rem_1fr]', className)}>
       <time
@@ -57,7 +62,25 @@ export function TimelineRow({ at, actor, action, summary, last = false, classNam
           </span>
           <code className="font-mono text-xs">{action}</code>
         </div>
-        <p className="mt-1 break-words">{summary}</p>
+        {details ? (
+          <>
+            <button
+              type="button"
+              className="focus-ring mt-1 flex w-full items-start gap-1.5 text-left break-words hover:underline"
+              aria-expanded={open}
+              aria-controls={detailsId}
+              onClick={() => setOpen((v) => !v)}
+            >
+              <span className="min-w-0 flex-1">{summary}</span>
+              <ChevronDown aria-hidden className={cx('mt-1 size-4 flex-none transition-transform', open && 'rotate-180')} />
+            </button>
+            <div id={detailsId} hidden={!open} className="mt-2 border-2 border-dashed border-ink bg-receipt p-3">
+              {details}
+            </div>
+          </>
+        ) : (
+          <p className="mt-1 break-words">{summary}</p>
+        )}
       </div>
     </li>
   )

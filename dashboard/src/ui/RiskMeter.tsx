@@ -21,7 +21,7 @@ export interface RiskMeterProps {
 }
 
 /** Risk score drawn like a receipt-printer gauge. */
-export function RiskMeter({ score, level, mediumAt = 40, highAt = 70, className }: RiskMeterProps) {
+export function RiskMeter({ score, level, mediumAt = 30, highAt = 60, className }: RiskMeterProps) {
   const loading = score === null
   const value = loading ? 0 : Math.max(0, Math.min(100, Math.round(score)))
   const lvl = level ?? riskLevel(value, mediumAt, highAt)

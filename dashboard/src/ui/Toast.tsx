@@ -45,7 +45,7 @@ export function ToastProvider({ children, duration = 4500 }: { children: ReactNo
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-3 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-96"
+        className="pointer-events-none fixed inset-x-4 bottom-[calc(1rem+var(--toast-lift,0px))] z-50 flex flex-col items-end gap-3 sm:inset-x-auto sm:right-6 sm:bottom-[calc(1.5rem+var(--toast-lift,0px))] sm:w-96"
       >
         {toasts.map((t) => {
           const { bar, Icon, label } = toneStyle[t.tone]

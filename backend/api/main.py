@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from backend.api.config import Settings, get_settings
-from backend.api.routes import health, orders, shops
+from backend.api.routes import health, orders, products, public, shops
 from backend.api.spa import spa_router
 from backend.external import ORDER_LIMIT, ORDER_WINDOW_S, RateLimiter
 from backend.mcp_server import create_mcp_server, mcp_route
@@ -33,6 +33,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(shops.router)
     app.include_router(orders.router)
+    app.include_router(products.router)
+    app.include_router(public.router)  # /api/public/... and /s/{slug}
 
     # External agents. Both BEFORE the SPA catch-all below.
     app.router.routes.append(mcp_route(mcp, settings))

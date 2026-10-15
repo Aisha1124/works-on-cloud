@@ -13,7 +13,7 @@ export function formatSGD(value: string | number): string {
   return `${sign}S$${grouped}.${frac.padEnd(2, '0').slice(0, 2)}`
 }
 
-export function riskLevel(score: number, mediumAt = 40, highAt = 70): RiskLevel {
+export function riskLevel(score: number, mediumAt = 30, highAt = 60): RiskLevel {
   if (score >= highAt) return 'high'
   if (score >= mediumAt) return 'medium'
   return 'low'
