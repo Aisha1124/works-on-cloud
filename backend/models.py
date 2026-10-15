@@ -124,6 +124,37 @@ class Order(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class CheckoutLine(BaseModel):
+    id: str  # line id, e.g. "li_1"
+    item_id: str  # UCP item id: product id, or "<product id>.v<n>" for a variant
+    quantity: int
+    options: dict[str, str] = Field(default_factory=dict)
+
+
+class CheckoutBuyer(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    email: str = ""
+    phone_number: str = ""
+
+
+class CheckoutSession(BaseModel):
+    """A UCP checkout session: what the buyer agent asked for. Prices are never stored here;
+    they are re-quoted from the catalog, and after completion they come from the order."""
+
+    id: str = Field(default_factory=lambda: f"chk_{new_id()}")
+    shop_id: str
+    lines: list[CheckoutLine]
+    buyer: CheckoutBuyer = Field(default_factory=CheckoutBuyer)
+    pickup_at: str = ""
+    note: str = ""
+    agent_name: str = ""
+    canceled: bool = False
+    order_id: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class AuditEvent(BaseModel):
     id: str = Field(default_factory=new_id)
     shop_id: str

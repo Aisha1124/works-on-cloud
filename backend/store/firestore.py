@@ -1,6 +1,6 @@
 """Prod store backed by Firestore. Stub for now; implemented in a later task."""
 
-from backend.models import AuditEvent, Order, OrderStatus, Product, Shop
+from backend.models import AuditEvent, CheckoutSession, Order, OrderStatus, Product, Shop
 from backend.store.base import Store
 
 _MSG = "FirestoreStore is not implemented yet. Use STORE_BACKEND=local for now."
@@ -42,6 +42,12 @@ class FirestoreStore(Store):
         raise NotImplementedError(_MSG)
 
     def save_order(self, order: Order) -> Order:
+        raise NotImplementedError(_MSG)
+
+    def get_checkout(self, checkout_id: str) -> CheckoutSession | None:
+        raise NotImplementedError(_MSG)
+
+    def save_checkout(self, checkout: CheckoutSession) -> CheckoutSession:
         raise NotImplementedError(_MSG)
 
     def add_audit_event(self, event: AuditEvent) -> AuditEvent:

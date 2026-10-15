@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 
 # Owned by the REST API, the MCP server and the UCP routes. Never falls back to index.html.
-RESERVED_PREFIXES = ("api", "mcp", ".well-known")
+RESERVED_PREFIXES = ("api", "mcp", "ucp", ".well-known")
 
 
 def spa_router(dist_dir: Path) -> APIRouter:

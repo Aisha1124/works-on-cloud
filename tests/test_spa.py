@@ -22,7 +22,7 @@ def test_missing_asset_is_404(client):
     assert client.get("/assets/missing.js").status_code == 404
 
 
-@pytest.mark.parametrize("path", ["/api/nope", "/mcp", "/mcp/x", "/.well-known/ucp"])
+@pytest.mark.parametrize("path", ["/api/nope", "/mcp/x", "/ucp/nope", "/.well-known/nope"])
 def test_reserved_prefixes_never_fall_back(client, path):
     res = client.get(path)
     assert res.status_code == 404

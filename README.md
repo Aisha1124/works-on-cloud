@@ -36,3 +36,15 @@ The design system lives at http://localhost:5173/styleguide.
 
 Note: the repo path may contain `&`. npm's `.cmd` shims break on such paths, so the dashboard's
 npm scripts call each tool with `node ./node_modules/...` directly. Keep that pattern when adding scripts.
+
+## For AI agents: MCP and UCP
+- MCP (streamable HTTP): `http://localhost:8000/mcp`. Tools: `find_shops`, `get_shop`,
+  `search_products`, `get_quote`, `place_order`, `get_order_status`.
+- UCP discovery profile: `http://localhost:8000/.well-known/ucp`. This is a partial
+  implementation; [docs/architecture/UCP_IMPLEMENTATION.md](docs/architecture/UCP_IMPLEMENTATION.md)
+  lists exactly what is and isn't implemented.
+- Try it: `uv run python scripts/seed_demo_shop.py`, start the backend, then
+  `uv run python scripts/try_mcp.py`. UCP request bodies for `curl.exe` are in `scripts/ucp/`.
+- On Cloud Run, set `BASE_URL` to the service's public URL. The MCP server only accepts
+  requests whose Host is localhost or the host in `BASE_URL`, and the UCP profile advertises
+  `BASE_URL` as its endpoint.

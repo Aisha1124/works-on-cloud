@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from backend.models import AuditEvent, Order, OrderStatus, Product, Shop
+from backend.models import AuditEvent, CheckoutSession, Order, OrderStatus, Product, Shop
 
 
 class Store(ABC):
@@ -42,6 +42,13 @@ class Store(ABC):
 
     @abstractmethod
     def save_order(self, order: Order) -> Order: ...
+
+    # UCP checkout sessions
+    @abstractmethod
+    def get_checkout(self, checkout_id: str) -> CheckoutSession | None: ...
+
+    @abstractmethod
+    def save_checkout(self, checkout: CheckoutSession) -> CheckoutSession: ...
 
     # Audit
     @abstractmethod

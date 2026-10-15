@@ -1,0 +1,6 @@
+{
+  "line_items": [{"item": {"id": "demo-lapis.v0"}, "quantity": 3}],
+  "buyer": {"first_name": "Siti", "last_name": "Rahman", "phone_number": "+6591234567"},
+  "kampungcart": {"pickup_at": "2026-10-17T10:00", "note": "Less sweet please",
+                  "agent_name": "KampungCart Demo Shopper"}
+}

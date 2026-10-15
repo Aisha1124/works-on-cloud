@@ -9,7 +9,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from backend.models import AuditEvent, Order, OrderStatus, Product, Shop
+from backend.models import AuditEvent, CheckoutSession, Order, OrderStatus, Product, Shop
 from backend.store.base import Store
 
 M = TypeVar("M", bound=BaseModel)
@@ -113,6 +113,14 @@ class LocalJsonStore(Store):
 
     def save_order(self, order: Order) -> Order:
         return self._put("orders", order.id, order)
+
+    # --- UCP checkout sessions ------------------------------------------
+
+    def get_checkout(self, checkout_id: str) -> CheckoutSession | None:
+        return self._get("checkouts", CheckoutSession, checkout_id)
+
+    def save_checkout(self, checkout: CheckoutSession) -> CheckoutSession:
+        return self._put("checkouts", checkout.id, checkout)
 
     # --- audit ----------------------------------------------------------
 
