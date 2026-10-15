@@ -10,10 +10,13 @@ export function PhotoDrop({
   onFiles,
   compact = false,
   title = 'Drop your menu photo here',
+  selected,
 }: {
   onFiles: (files: File[]) => void
   compact?: boolean
   title?: ReactNode
+  /** Names of photos already chosen but waiting (e.g. for the owner key). */
+  selected?: string[]
 }) {
   const pickRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
@@ -61,6 +64,11 @@ export function PhotoDrop({
             A clear, straight-on photo of your price list or menu. Up to {MAX_PHOTOS} photos.
           </p>
         </div>
+        {selected && selected.length > 0 && (
+          <p className="max-w-full truncate border-2 border-dashed border-ink bg-paper px-2 py-1 font-mono text-xs" role="status">
+            Ready: {selected.join(', ')}
+          </p>
+        )}
         <div className="flex flex-wrap justify-center gap-3">
           <button
             type="button"

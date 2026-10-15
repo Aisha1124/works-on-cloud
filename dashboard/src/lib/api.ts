@@ -19,6 +19,8 @@ interface RequestOptions {
   form?: FormData
   /** Owner routes send X-Owner-Key. Public routes don't. */
   owner?: boolean
+  /** Try this key instead of the stored one (checking a key before keeping it). */
+  ownerKey?: string
   timeoutMs?: number
   signal?: AbortSignal
 }
@@ -39,9 +41,9 @@ function friendly(status: number, body: unknown): string {
 }
 
 export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', json, form, owner = true, timeoutMs = 15000, signal } = opts
+  const { method = 'GET', json, form, owner = true, ownerKey, timeoutMs = 15000, signal } = opts
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (owner) headers['X-Owner-Key'] = getOwnerKey() ?? ''
+  if (owner) headers['X-Owner-Key'] = ownerKey ?? getOwnerKey() ?? ''
   if (json !== undefined) headers['Content-Type'] = 'application/json'
 
   const timeout = AbortSignal.timeout(timeoutMs)
@@ -69,7 +71,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
     // not JSON (e.g. a proxy error page): fall through to a generic message
   }
   if (!res.ok) {
-    if (res.status === 401 && owner) clearOwnerKey()
+    if (res.status === 401 && owner && ownerKey === undefined) clearOwnerKey()
     throw new ApiError(res.status, friendly(res.status, body))
   }
   return body as T

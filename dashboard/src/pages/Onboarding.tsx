@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { OwnerBar } from '../components/OwnerShell'
-import { OwnerKeyForm } from '../components/OwnerKeyForm'
+import { OwnerKeyStrip } from '../components/OwnerKeyForm'
 import { PhotoDrop } from '../components/PhotoDrop'
 import { ScanView, type ScanPhase } from '../components/ScanView'
 import { PHOTO_TIMEOUT_MS, api, errorText } from '../lib/api'
@@ -73,6 +73,9 @@ export function Onboarding() {
   const [result, setResult] = useState<DraftResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const ctrlRef = useRef<AbortController | null>(null)
+  const keyRef = useRef<HTMLInputElement>(null)
+  // A photo chosen before the owner key: read it as soon as the key is unlocked.
+  const [pending, setPending] = useState<File[] | null>(null)
 
   useEffect(() => () => photos.forEach((u) => URL.revokeObjectURL(u)), [photos])
   useEffect(() => () => ctrlRef.current?.abort(), [])
@@ -102,6 +105,12 @@ export function Onboarding() {
   }
 
   function start(list: File[]) {
+    if (!key) {
+      setPending(list)
+      keyRef.current?.focus()
+      return
+    }
+    setPending(null)
     setFiles(list)
     setPhotos(list.map((f) => URL.createObjectURL(f)))
     void upload(list)
@@ -116,7 +125,8 @@ export function Onboarding() {
   }
 
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pt-4 pb-16 sm:px-6 sm:pt-6">
+    // The right gutter is 4px wider than the left so the hard shadows don't eat into it.
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 pt-4 pr-5 pb-16 pl-4 sm:pt-6 sm:pr-7 sm:pl-6">
       <OwnerBar />
       <Signboard
         plate={
@@ -134,9 +144,25 @@ export function Onboarding() {
 
       {phase === 'idle' ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
-          {key ? (
+          <div className="flex min-w-0 flex-col">
+            {!key && (
+              <OwnerKeyStrip
+                ref={keyRef}
+                waiting={!!pending}
+                onUnlocked={() => {
+                  if (pending) {
+                    const list = pending
+                    setPending(null)
+                    setFiles(list)
+                    setPhotos(list.map((f) => URL.createObjectURL(f)))
+                    void upload(list)
+                  }
+                }}
+              />
+            )}
             <PhotoDrop
               onFiles={start}
+              selected={pending?.map((f) => f.name)}
               title={
                 <>
                   <span className="sm:hidden">Snap your menu</span>
@@ -144,9 +170,7 @@ export function Onboarding() {
                 </>
               }
             />
-          ) : (
-            <OwnerKeyForm />
-          )}
+          </div>
           <StepsReceipt />
         </div>
       ) : (

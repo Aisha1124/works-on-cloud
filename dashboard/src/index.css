@@ -44,6 +44,8 @@
 
 @layer base {
   html {
+    /* Guard: hard shadows and torn edges must never cause sideways scrolling. */
+    overflow-x: clip;
     background: var(--paper);
     color: var(--ink);
     -webkit-text-size-adjust: 100%;
