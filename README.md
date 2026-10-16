@@ -17,6 +17,12 @@ The catalog extraction prompt was first prototyped and tested in Google AI Studi
 
 One Cloud Run container (asia-southeast1) serves the API, the MCP server, the UCP endpoints and the built dashboard. It is deployed with `gcloud run deploy --source .`, which uses Cloud Build only to build the image.
 
+Deploy steps (from Google Cloud Shell) are in [infra/DEPLOY.md](infra/DEPLOY.md). Production currently
+runs with `STORE_BACKEND=local`: data lives in the container and is reset on every restart, and the
+sample shop `mak-kuih` is seeded at startup.
+
+**Next:** implement FirestoreStore and switch production to `STORE_BACKEND=firestore`.
+
 ## Structure
 - `agents/`: ADK + Gemini agents
 - `backend/`: FastAPI APIs, MCP server, UCP endpoint
@@ -93,7 +99,7 @@ Restart Claude Desktop, then ask something like: "Find a kuih shop on KampungCar
 3 boxes of kuih lapis, 20 pcs, for Saturday 10am pickup."
 
 ### Try it from a script
-Run `uv run python scripts/seed_demo_shop.py`, start the backend, then run
+Run `uv run python scripts/seed_shop.py` (creates the shop `mak-kuih`), start the backend, then run
 `uv run python scripts/try_mcp.py`. The script places a normal order, an order with an item
 that is not on the menu, and a risky order.
 

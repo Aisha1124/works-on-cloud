@@ -1,9 +1,9 @@
-"""Try the MCP server like an external AI agent would: list the tools, find the demo shop,
+"""Try the MCP server like an external AI agent would: list the tools, find the sample shop,
 place a normal order, an order with an item not on the menu and a risky order,
 then show their statuses.
 
-Needs the server running and the demo shop seeded:
-  uv run python scripts/seed_demo_shop.py
+Needs the server running and the sample shop seeded:
+  uv run python scripts/seed_shop.py
   uv run uvicorn backend.api.main:app --port 8000
 Usage:  uv run python scripts/try_mcp.py [--url http://localhost:8000/mcp]
 """
@@ -23,7 +23,7 @@ sys.stdout.reconfigure(encoding="utf-8")  # menus have local names (e.g. 九层�
 
 from backend.timeutil import now_sg  # noqa: E402
 
-SLUG = "mak-kuih-demo"
+SLUG = "mak-kuih"
 
 
 def show(title: str, result) -> dict:
@@ -47,7 +47,7 @@ async def main(url: str) -> None:
         show("find_shops('kuih')", await client.call_tool("find_shops", {"query": "kuih"}))
         menu = show("get_menu", await client.call_tool("get_menu", {"shop_slug": SLUG}))
         if not any(i["name"] == "Kuih Lapis" for i in menu.get("items", [])):
-            print("\nNo Kuih Lapis found. Run: uv run python scripts/seed_demo_shop.py")
+            print("\nNo Kuih Lapis found. Run: uv run python scripts/seed_shop.py")
             return
 
         show("get_quote(3 x Kuih Lapis 20 pcs + 1 x Durian Cake)", await client.call_tool(
@@ -58,14 +58,14 @@ async def main(url: str) -> None:
         pickup = saturday.strftime("%Y-%m-%dT%H:%M")
         normal = show("place_pickup_order: normal", await client.call_tool(
             "place_pickup_order", {
-                "shop_slug": SLUG, "agent_name": "KampungCart Demo Shopper",
+                "shop_slug": SLUG, "agent_name": "KampungCart Shopper",
                 "items": [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 3}],
                 "customer_name": "Siti", "customer_phone": "+65 9123 4567",
                 "pickup_time": pickup, "note": "Less sweet please"}))
 
         off_menu = show("place_pickup_order: item not on the menu", await client.call_tool(
             "place_pickup_order", {
-                "shop_slug": SLUG, "agent_name": "KampungCart Demo Shopper",
+                "shop_slug": SLUG, "agent_name": "KampungCart Shopper",
                 "items": [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 1},
                           {"name": "Durian Cake", "qty": 1, "request": "Small, for 4 people"}],
                 "customer_name": "Siti", "customer_phone": "+65 9123 4567",

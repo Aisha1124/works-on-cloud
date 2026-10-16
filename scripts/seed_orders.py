@@ -1,6 +1,6 @@
-"""Seed a demo shop with three orders, for trying the order pipeline by hand.
+"""Seed a test shop with three orders, for trying the order pipeline by hand.
 
-Creates "Demo Kuih (seed)" with a multi-pack and a single-pack product, then places:
+Creates "Test Kuih (seed)" with a multi-pack and a single-pack product, then places:
   1. a normal order            -> auto_approved
   2. a suspicious order        -> held, risk HIGH (fake phone, rushed pickup, injection note)
   3. a large order             -> held (S$180 is above the S$150 auto-approve limit)
@@ -34,7 +34,7 @@ async def main(live: bool) -> None:
         settings = settings.model_copy(update={"gemini_api_key": None})
     store = get_store(settings)
 
-    shop = store.save_shop(Shop(slug=f"demo-kuih-{now_sg():%H%M%S}", name="Demo Kuih (seed)",
+    shop = store.save_shop(Shop(slug=f"test-kuih-{now_sg():%H%M%S}", name="Test Kuih (seed)",
                                 hours="Daily 8am-8pm", published=True))
     lapis = store.save_product(Product(
         shop_id=shop.id, name="Kuih Lapis", category="Kuih",
@@ -49,7 +49,7 @@ async def main(live: bool) -> None:
     normal = await commerce.place_order(
         store, shop.id, [{"product_id": lapis.id, "variant": "20 pcs", "qty": 3}],
         "Siti", "+65 9123 4567", tomorrow_11am, "Less sweet please", "mcp",
-        "KampungCart Demo Shopper", actor=Actor.shopper_agent, settings=settings)
+        "KampungCart Shopper", actor=Actor.shopper_agent, settings=settings)
     suspicious = await commerce.place_order(
         store, shop.id, [{"product_id": lapis.id, "variant": "40 pcs", "qty": 10}],
         "Mr X", "12345", now_sg() + timedelta(hours=3),
@@ -58,7 +58,7 @@ async def main(live: bool) -> None:
     large = await commerce.place_order(
         store, shop.id, [{"product_id": banana.id, "qty": 5},
                          {"product_id": lapis.id, "variant": "40 pcs", "qty": 2}],
-        "Priya", "+65 8765 4321", tomorrow_11am, "", "mcp", "KampungCart Demo Shopper",
+        "Priya", "+65 8765 4321", tomorrow_11am, "", "mcp", "KampungCart Shopper",
         actor=Actor.shopper_agent, settings=settings)
     # Explanations are written in the background; let them land before the loop closes.
     await commerce.wait_for_background_tasks()

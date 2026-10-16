@@ -1,0 +1,27 @@
+# What `gcloud run deploy --source .` does NOT upload to Cloud Build.
+# Secrets never leave the machine; the image is built from the Dockerfile.
+.gcloudignore
+.env
+.env.*
+!.env.example
+*.json.key
+service-account*.json
+secrets/
+
+.git/
+.gitignore
+.claude/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+data/
+uploads/
+
+dashboard/node_modules/
+dashboard/dist/
+*.tsbuildinfo
+
+tests/
+docs/
+infra/
