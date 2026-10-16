@@ -36,6 +36,12 @@ from backend.ucp.profile import (
 log = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 64 * 1024
+def mask_phone(phone: str) -> str:
+    """'+65 9123 4567' -> '****4567'. Customer phone numbers are never sent back to agents."""
+    digits = "".join(c for c in phone if c.isdigit())
+    return f"****{digits[-4:]}" if len(digits) > 4 else ("****" if digits else "")
+
+
 COMPLETED = {OrderStatus.auto_approved, OrderStatus.approved, OrderStatus.ready,
              OrderStatus.done}
 
@@ -427,7 +433,9 @@ def ucp_router() -> APIRouter:
             "line_items": line_items,
             "totals": convert.totals(total) if total is not None else [],
             "links": [],
-            "buyer": session.buyer.model_dump(),
+            # Anyone holding the checkout id can read it, so the phone is masked (last 4).
+            "buyer": {**session.buyer.model_dump(),
+                      "phone_number": mask_phone(session.buyer.phone_number)},
             "kampungcart": {
                 "shop": {"slug": shop.slug, "name": shop.name, "address": shop.address,
                          "hours": shop.hours, "phone": shop.phone} if shop else None,

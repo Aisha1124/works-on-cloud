@@ -11,6 +11,10 @@ dashboard. `gcloud run deploy --source .` sends the repo to Cloud Build, which b
   each startup (`scripts/seed_shop.py`). Shops, orders and audit events created on the live
   site disappear when the instance is replaced.
 - **`--max-instances=1`** keeps all requests on the one instance that holds the data.
+- **`OWNER_KEY` is the owner key of the sample shop `mak-kuih` only.** Use it at
+  "Shop owner login" to manage that shop's orders. Every other shop gets its own random key
+  when it goes live. Pick a long random value, e.g. `kc_` followed by
+  `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
 - **Secrets** (`GEMINI_API_KEY`, `OWNER_KEY`) live in Secret Manager and are injected at
   runtime. Nothing secret is in the image: `.env` is excluded by `.gcloudignore` and
   `.dockerignore`.

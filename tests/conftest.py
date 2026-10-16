@@ -10,6 +10,7 @@ from agents import gemini
 from backend.api.config import Settings
 from backend.api.main import create_app
 from backend.models import Product, ProductOption, Shop, Variant
+from backend.owner_auth import hash_owner_key
 from backend.store import LocalJsonStore
 from backend.timeutil import SGT
 
@@ -24,6 +25,15 @@ def no_live_gemini(monkeypatch):
         raise gemini.GeminiNotConfigured("live Gemini is disabled in tests")
 
     monkeypatch.setattr(gemini, "make_client", refuse)
+
+
+TEST_OWNER_KEY = "kc_test-owner-key"
+
+
+def give_key(store, shop: Shop, key: str = TEST_OWNER_KEY) -> Shop:
+    """Make `key` this shop's owner key (only the hash is stored)."""
+    store.set_owner_key_hash(shop.id, hash_owner_key(key))
+    return shop
 
 
 @pytest.fixture

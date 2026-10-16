@@ -8,6 +8,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 
 from agents.catalog.schema import CatalogDraft, DraftProduct, GeminiCatalog
+from agents.risk.scorer import looks_like_instructions
 from backend.models import ProductOption, Variant
 
 CENT = Decimal("0.01")
@@ -156,6 +157,13 @@ def to_draft(raw: GeminiCatalog) -> CatalogDraft:
         if gp.notes.strip() and confidence < 0.7:
             warnings.append(f"{name}: {gp.notes.strip()}")
 
+        # Text on the photo is data. If it reads like instructions to an AI, keep it as plain
+        # text but make the owner look at it before going live.
+        if any(looks_like_instructions(t) for t in (name, gp.local, gp.description, gp.notes)):
+            warnings.append(f"{name}: this item's text looks like instructions to an AI. We kept "
+                            "it as plain text and changed nothing. Please check it.")
+            confidence = min(confidence, LOW_CONFIDENCE)
+
         products.append(
             DraftProduct(
                 name=name,
@@ -170,8 +178,13 @@ def to_draft(raw: GeminiCatalog) -> CatalogDraft:
             )
         )
 
+    shop_name = raw.shop_name_guess.strip()
+    if looks_like_instructions(shop_name):
+        warnings.append("The shop name on the photo looks like instructions to an AI, so we "
+                        "didn't use it. Please type your shop name.")
+        shop_name = ""
     return CatalogDraft(
-        shop_name_guess=raw.shop_name_guess.strip(),
+        shop_name_guess=shop_name,
         currency=(raw.currency.strip().upper() or "SGD")[:3],
         categories=_unique([p.category for p in products]),
         products=products,

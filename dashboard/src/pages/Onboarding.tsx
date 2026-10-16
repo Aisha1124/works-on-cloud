@@ -1,13 +1,16 @@
+import { ArrowRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { OwnerBar } from '../components/OwnerShell'
-import { OwnerKeyStrip } from '../components/OwnerKeyForm'
 import { PhotoDrop } from '../components/PhotoDrop'
 import { ScanView, type ScanPhase } from '../components/ScanView'
 import { PHOTO_TIMEOUT_MS, api, errorText } from '../lib/api'
-import { useLoad, useOwnerKey } from '../lib/hooks'
-import type { DraftResponse, ShopSummary } from '../lib/types'
-import { ReceiptCard, ReceiptDivider, Signboard, Stamp } from '../ui'
+import { setOwnerKey } from '../lib/ownerKey'
+import type { DraftResponse } from '../lib/types'
+import { ReceiptCard, ReceiptDivider, Signboard } from '../ui'
+
+/** The sample shop seeded on every server (scripts/seed_shop.py). */
+const SAMPLE_SHOP = { slug: 'mak-kuih', name: "Mak's Kuih" }
 
 const steps = [
   { n: '01', word: 'Snap', done: '1 photo', line: 'Your price list, menu board or Instagram post.' },
@@ -39,33 +42,7 @@ function StepsReceipt() {
   )
 }
 
-function YourShops() {
-  const shops = useLoad((signal) => api<ShopSummary[]>('/api/shops', { signal }), 'shops')
-  if (!shops.data?.length) return null
-  return (
-    <section aria-labelledby="your-shops" className="flex flex-col gap-3">
-      <h2 id="your-shops" className="text-2xl">
-        Your shops
-      </h2>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {shops.data.slice(0, 6).map((s) => (
-          <li key={s.id}>
-            <Link
-              to={`/shop/${s.id}`}
-              className="focus-ring flex items-center justify-between gap-3 border-2 border-ink bg-receipt p-3 shadow-hard-sm hover:bg-turmeric-tint"
-            >
-              <span className="min-w-0 truncate font-semibold">{s.name}</span>
-              <Stamp kind={s.published ? 'approved' : 'check'} label={s.published ? 'Live' : 'Draft'} size="sm" />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
-}
-
 export function Onboarding() {
-  const key = useOwnerKey()
   const navigate = useNavigate()
   const [files, setFiles] = useState<File[]>([])
   const [photos, setPhotos] = useState<string[]>([])
@@ -73,9 +50,6 @@ export function Onboarding() {
   const [result, setResult] = useState<DraftResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const ctrlRef = useRef<AbortController | null>(null)
-  const keyRef = useRef<HTMLInputElement>(null)
-  // A photo chosen before the owner key: read it as soon as the key is unlocked.
-  const [pending, setPending] = useState<File[] | null>(null)
 
   useEffect(() => () => photos.forEach((u) => URL.revokeObjectURL(u)), [photos])
   useEffect(() => () => ctrlRef.current?.abort(), [])
@@ -95,6 +69,8 @@ export function Onboarding() {
         timeoutMs: PHOTO_TIMEOUT_MS,
         signal: ctrl.signal,
       })
+      // The draft key lets this tab review the new shop. Going live swaps it for the owner key.
+      if (res.draft_key) setOwnerKey(res.shop.id, res.draft_key)
       setResult(res)
       setPhase('done')
     } catch (err) {
@@ -105,12 +81,6 @@ export function Onboarding() {
   }
 
   function start(list: File[]) {
-    if (!key) {
-      setPending(list)
-      keyRef.current?.focus()
-      return
-    }
-    setPending(null)
     setFiles(list)
     setPhotos(list.map((f) => URL.createObjectURL(f)))
     void upload(list)
@@ -141,28 +111,22 @@ export function Onboarding() {
           </span>
         }
       />
+      {phase === 'idle' && (
+        <p className="-mt-2">
+          <Link
+            to={`/s/${SAMPLE_SHOP.slug}`}
+            className="focus-ring inline-flex items-center gap-1.5 font-semibold underline decoration-2 underline-offset-4 hover:text-chili"
+          >
+            See a live shop: {SAMPLE_SHOP.name} <ArrowRight aria-hidden className="size-4" />
+          </Link>
+        </p>
+      )}
 
       {phase === 'idle' ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
           <div className="flex min-w-0 flex-col">
-            {!key && (
-              <OwnerKeyStrip
-                ref={keyRef}
-                waiting={!!pending}
-                onUnlocked={() => {
-                  if (pending) {
-                    const list = pending
-                    setPending(null)
-                    setFiles(list)
-                    setPhotos(list.map((f) => URL.createObjectURL(f)))
-                    void upload(list)
-                  }
-                }}
-              />
-            )}
             <PhotoDrop
               onFiles={start}
-              selected={pending?.map((f) => f.name)}
               title={
                 <>
                   <span className="sm:hidden">Snap your menu</span>
@@ -187,8 +151,6 @@ export function Onboarding() {
           />
         </section>
       )}
-
-      {key && phase === 'idle' && <YourShops />}
     </main>
   )
 }

@@ -1,8 +1,8 @@
-import { Bot, ChevronDown, Cog, ScanText, ShieldAlert, ShoppingBag, User } from 'lucide-react'
+import { Bot, ChevronDown, Cog, ScanText, ShieldAlert, ShoppingBag, Store, User } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { cx } from './cx'
 
-export type Actor = 'owner' | 'system' | 'catalog_agent' | 'risk_agent' | 'shopper_agent' | 'external_agent'
+export type Actor = 'owner' | 'system' | 'catalog_agent' | 'risk_agent' | 'shopper_agent' | 'external_agent' | 'customer'
 
 const actorInfo: Record<Actor, { label: string; Icon: typeof Bot; chip: string }> = {
   owner: { label: 'Owner', Icon: User, chip: 'bg-ink text-receipt border-ink' },
@@ -11,6 +11,7 @@ const actorInfo: Record<Actor, { label: string; Icon: typeof Bot; chip: string }
   risk_agent: { label: 'Risk agent', Icon: ShieldAlert, chip: 'bg-chili text-receipt border-ink' },
   shopper_agent: { label: 'Shopper agent', Icon: ShoppingBag, chip: 'bg-pandan text-receipt border-ink' },
   external_agent: { label: 'External agent', Icon: Bot, chip: 'bg-receipt text-ink border-ink border-dashed' },
+  customer: { label: 'Customer', Icon: Store, chip: 'bg-turmeric-tint text-ink border-ink' },
 }
 
 const timeFmt = new Intl.DateTimeFormat('en-SG', {

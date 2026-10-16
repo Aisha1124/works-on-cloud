@@ -24,7 +24,7 @@ import {
 } from '../ui'
 
 const POLL_MS = 3000
-const channelLabel = { mcp: 'MCP', ucp: 'UCP', dashboard: 'Dashboard' } as const
+const channelLabel = { mcp: 'MCP', ucp: 'UCP', dashboard: 'Dashboard', web: 'Shop page' } as const
 const stampFor: Record<OrderStatus, { kind: StampKind; label: string }> = {
   auto_approved: { kind: 'approved', label: 'Auto-approved' },
   approved: { kind: 'approved', label: 'Approved' },

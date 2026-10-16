@@ -1,4 +1,5 @@
 import io
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from backend.api.config import Settings
 from backend.api.main import create_app
 from backend.models import Actor, Variant
 
-KEY = "test-owner-key"
+KEY = "kc_unused"  # drafts need no key; any header is ignored
 
 
 @pytest.fixture
@@ -59,12 +60,26 @@ def fake_extract(monkeypatch):
     return calls
 
 
-def test_draft_requires_owner_key(api, fake_extract):
+def test_draft_needs_no_key_and_returns_a_draft_key_for_that_shop_only(api, app, fake_extract):
     r = api.post("/api/shops/draft", files=[("images", photo())])
-    assert r.status_code == 401
-    r = api.post("/api/shops/draft", files=[("images", photo())], headers={"X-Owner-Key": "wrong"})
-    assert r.status_code == 401
-    assert fake_extract == []
+    assert r.status_code == 200, r.text
+    body = r.json()
+    key, shop_id = body["draft_key"], body["shop"]["id"]
+    assert key.startswith("kc_") and len(key) > 40
+    # Only the hash is stored, and never on the shop itself.
+    store = app.state.store
+    assert store.get_owner_key_hash(shop_id) != key
+    assert key not in json.dumps(store.get_shop(shop_id).model_dump(mode="json"))
+    assert api.get(f"/api/shops/{shop_id}", headers={"X-Owner-Key": key}).status_code == 200
+    other = api.post("/api/shops/draft", files=[("images", photo())]).json()["shop"]["id"]
+    assert api.get(f"/api/shops/{other}", headers={"X-Owner-Key": key}).status_code == 401
+
+
+def test_new_drafts_are_rate_limited_per_client(api, fake_extract):
+    codes = [api.post("/api/shops/draft", files=[("images", photo())]).status_code
+             for _ in range(6)]
+    assert codes == [200] * 5 + [429]
+    assert len(fake_extract) == 5
 
 
 @pytest.mark.parametrize("count", [0, 6])

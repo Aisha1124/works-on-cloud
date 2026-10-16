@@ -81,6 +81,23 @@ class LocalJsonStore(Store):
     def save_shop(self, shop: Shop) -> Shop:
         return self._put("shops", shop.id, shop)
 
+    # --- owner keys (hash only) -------------------------------------------
+
+    def get_owner_key_hash(self, shop_id: str) -> str | None:
+        with self._lock:
+            return self._read("owner_keys").get(shop_id, {}).get("key_hash")
+
+    def set_owner_key_hash(self, shop_id: str, key_hash: str) -> None:
+        with self._lock:
+            rows = self._read("owner_keys")
+            rows[shop_id] = {"shop_id": shop_id, "key_hash": key_hash}
+            self._write("owner_keys", rows)
+
+    def find_shop_by_owner_key_hash(self, key_hash: str) -> str | None:
+        with self._lock:
+            rows = self._read("owner_keys")
+        return next((r["shop_id"] for r in rows.values() if r.get("key_hash") == key_hash), None)
+
     # --- products -------------------------------------------------------
 
     def get_product(self, product_id: str) -> Product | None:

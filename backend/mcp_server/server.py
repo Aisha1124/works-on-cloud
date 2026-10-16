@@ -43,15 +43,7 @@ INSTRUCTIONS = (
     "decides, so check get_order_status later."
 )
 
-# Model status -> what a buyer agent sees.
-BUYER_STATUS = {
-    OrderStatus.auto_approved: "confirmed",
-    OrderStatus.approved: "confirmed",
-    OrderStatus.pending_approval: "pending_owner_approval",
-    OrderStatus.rejected: "rejected",
-    OrderStatus.ready: "ready",
-    OrderStatus.done: "done",
-}
+BUYER_STATUS = commerce.BUYER_STATUS
 
 ShopSlug = Annotated[str, Field(description="Shop slug from find_shops, e.g. 'mak-kuih'.",
                                 max_length=MAX_SLUG_LEN)]

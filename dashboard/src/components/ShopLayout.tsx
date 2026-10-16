@@ -21,7 +21,7 @@ function ShopFrame() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pt-4 pb-32 sm:px-6 sm:pt-6">
-      <OwnerBar />
+      <OwnerBar shopId={id} />
       {loaded.error && !loaded.data ? (
         loaded.errorStatus === 404 ? (
           <EmptyState
@@ -58,7 +58,7 @@ function ShopFrame() {
                       )
                     }
                   >
-                    {t.label === 'Go live' && shop.published ? 'Live' : t.label === 'Audit log' ? <>Audit<span className="hidden sm:inline"> log</span></> : t.label}
+                    {t.label === 'Go live' && shop.published ? 'Live' : t.label === 'Audit log' ? <>Audit<span className="hidden sm:inline">&nbsp;log</span></> : t.label}
                   </NavLink>
                 </li>
               ))}
@@ -72,8 +72,9 @@ function ShopFrame() {
 }
 
 export function ShopLayout() {
+  const { id = '' } = useParams()
   return (
-    <RequireOwner>
+    <RequireOwner shopId={id}>
       <ShopFrame />
     </RequireOwner>
   )

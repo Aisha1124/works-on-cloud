@@ -23,6 +23,15 @@ class FirestoreStore(Store):
     def save_shop(self, shop: Shop) -> Shop:
         raise NotImplementedError(_MSG)
 
+    def get_owner_key_hash(self, shop_id: str) -> str | None:
+        raise NotImplementedError(_MSG)
+
+    def set_owner_key_hash(self, shop_id: str, key_hash: str) -> None:
+        raise NotImplementedError(_MSG)
+
+    def find_shop_by_owner_key_hash(self, key_hash: str) -> str | None:
+        raise NotImplementedError(_MSG)
+
     def get_product(self, product_id: str) -> Product | None:
         raise NotImplementedError(_MSG)
 

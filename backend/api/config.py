@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # App
     store_backend: Literal["local", "firestore"] = "local"
     base_url: str = "http://localhost:8000"
+    # Owner key of the sample shop seeded by scripts/seed_shop.py (mak-kuih). Every other shop
+    # gets its own random key when it goes live. This key opens mak-kuih only.
     owner_key: SecretStr | None = None
 
     # Internal paths. Not listed in .env.example; the defaults work everywhere.

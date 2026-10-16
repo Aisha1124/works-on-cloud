@@ -76,6 +76,15 @@ class RateLimiter:
             hits.append(now)
             return True
 
+    def blocked(self, key: str) -> bool:
+        """True if `key` has used up its limit. Records nothing."""
+        now = self._clock()
+        with self._lock:
+            hits = self._hits.get(key)
+            while hits and now - hits[0] >= self.window_s:
+                hits.popleft()
+            return bool(hits) and len(hits) >= self.limit
+
 
 ORDER_LIMIT = 10  # orders per client per minute
 ORDER_WINDOW_S = 60.0

@@ -340,3 +340,30 @@ async def test_agent_name_falls_back_to_mcp_client_name(app, shop):
     event = app.state.store.list_audit_events("platform")[0]
     assert event.details["agent_name"] == "Claude Desktop"
     assert event.actor == Actor.external_agent
+
+
+async def test_no_tool_ever_returns_a_customer_phone_number(app, shop):
+    """Customer phone numbers stay with the shop owner. Not in any tool output, not even for
+    the agent that placed the order, and not for an order placed through another channel."""
+    store = app.state.store
+    store.save_order(Order(
+        id="weborder0001", shop_id=shop.id, total=Decimal("16"), customer_name="Ali",
+        customer_phone="+65 8111 2222", pickup_at=now_sg(), channel="web", status="approved",
+        items=[OrderItem(product_id="p", name="Kuih Lapis", qty=1, unit_price=Decimal("16"),
+                         line_total=Decimal("16"))]))
+    async with connect(app) as client:
+        outputs = [await client.call_tool("find_shops", {}),
+                   await client.call_tool("get_shop", {"shop_slug": "mak-kuih"}),
+                   await client.call_tool("get_menu", {"shop_slug": "mak-kuih"}),
+                   await client.call_tool("get_quote", {"shop_slug": "mak-kuih", "items": [
+                       {"name": "Kuih Lapis", "variant": "20 pcs", "qty": 1}]})]
+        placed = await client.call_tool("place_pickup_order", order_args())
+        outputs += [placed,
+                    await client.call_tool("get_order_status",
+                                           {"order_id": placed.structured_content["order_id"]}),
+                    await client.call_tool("get_order_status", {"order_id": "weborder0001"})]
+    for result in outputs:
+        dumped = result.model_dump_json()
+        assert "91234567" not in dumped.replace(" ", "")
+        assert "81112222" not in dumped.replace(" ", "")
+        assert "customer_phone" not in dumped

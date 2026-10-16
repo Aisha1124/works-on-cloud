@@ -24,6 +24,7 @@ class Channel(StrEnum):
     mcp = "mcp"
     ucp = "ucp"
     dashboard = "dashboard"
+    web = "web"  # a customer ordering on the public shop page /s/{slug}
 
 
 class RiskLevel(StrEnum):
@@ -48,6 +49,7 @@ class Actor(StrEnum):
     risk_agent = "risk_agent"
     shopper_agent = "shopper_agent"
     external_agent = "external_agent"
+    customer = "customer"  # a person ordering on the public shop page
 
 
 class Shop(BaseModel):

@@ -7,6 +7,9 @@ Fixed ids, so scripts/try_mcp.py and the UCP request files in scripts/ucp/ can r
              ondeh-ondeh (one pack, option Flavour: Pandan / Gula Melaka)
 No orders are placed and Gemini is not called.
 
+The shop's owner key is OWNER_KEY (only its hash is stored). It opens this shop only. If
+OWNER_KEY is empty the shop gets no key, so nobody can manage it.
+
 Usage:  uv run python scripts/seed_shop.py
 """
 
@@ -18,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.api.config import get_settings  # noqa: E402
 from backend.models import Product, ProductOption, Shop, Variant  # noqa: E402
+from backend.owner_auth import hash_owner_key  # noqa: E402
 from backend.store import get_store  # noqa: E402
 
 SHOP_ID = "mak-kuih"
@@ -25,7 +29,8 @@ SLUG = "mak-kuih"
 
 
 def main() -> None:
-    store = get_store(get_settings())
+    settings = get_settings()
+    store = get_store(settings)
     shop = store.save_shop(Shop(
         id=SHOP_ID, slug=SLUG, name="Mak's Kuih", tagline="Nyonya kuih, made fresh",
         shop_type="Home baker", address="Blk 201 Tampines St 21, Tampines",
@@ -39,7 +44,11 @@ def main() -> None:
         id="ondeh-ondeh", shop_id=shop.id, name="Ondeh Ondeh", category="Kuih",
         base_price=Decimal("12.50"), unit="10 pcs",
         options=[ProductOption(name="Flavour", choices=["Pandan", "Gula Melaka"])]))
-    print(f"Published shop '{shop.name}' (slug {SLUG}, id {SHOP_ID}) with 2 products.")
+    key = settings.owner_key.get_secret_value().strip() if settings.owner_key else ""
+    if key:
+        store.set_owner_key_hash(shop.id, hash_owner_key(key))
+    print(f"Published shop '{shop.name}' (slug {SLUG}, id {SHOP_ID}) with 2 products. "
+          + ("Owner key: OWNER_KEY." if key else "No owner key (OWNER_KEY is empty)."))
 
 
 if __name__ == "__main__":

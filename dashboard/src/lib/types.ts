@@ -58,8 +58,13 @@ export interface ShopDetail {
   links: ShopLinks
 }
 
-export interface ShopSummary {
-  id: string
+/** Going live: owner_key is only set the first time, and is shown to the owner once. */
+export interface PublishResponse extends ShopDetail {
+  owner_key: string | null
+}
+
+export interface LoginResponse {
+  shop_id: string
   name: string
   slug: string
   published: boolean
@@ -69,10 +74,12 @@ export interface DraftResponse {
   shop: Shop
   products: Product[]
   warnings: string[]
+  /** Temporary key for this browser until the shop goes live. */
+  draft_key?: string | null
 }
 
 export type OrderStatus = 'auto_approved' | 'pending_approval' | 'approved' | 'rejected' | 'ready' | 'done'
-export type Channel = 'mcp' | 'ucp' | 'dashboard'
+export type Channel = 'mcp' | 'ucp' | 'dashboard' | 'web'
 
 export interface OrderItem {
   product_id: string
@@ -144,4 +151,42 @@ export interface PublicShopPage {
   shop: PublicShop
   products: Product[]
   links: ShopLinks
+}
+
+/** A cart line on the shop page. */
+export interface CartLine {
+  product_id: string
+  variant: string | null
+  options: Record<string, string>
+  qty: number
+}
+
+export interface PricedLine {
+  name: string
+  variant: string | null
+  options: Record<string, string>
+  qty: number
+  unit_price: Money
+  line_total: Money
+}
+
+export interface WebQuote {
+  items: PricedLine[]
+  total: Money
+  currency: string
+}
+
+/** What a customer sees about their order (buyer words, no risk details). */
+export type BuyerStatus = 'confirmed' | 'pending_owner_approval' | 'rejected' | 'ready' | 'done'
+
+export interface WebOrder {
+  order_id: string
+  shop_slug: string
+  status: BuyerStatus
+  message: string
+  rejection_reason: string
+  items: PricedLine[]
+  total: Money
+  currency: string
+  pickup_time: string
 }

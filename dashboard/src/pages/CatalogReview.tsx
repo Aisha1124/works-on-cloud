@@ -5,8 +5,9 @@ import { MenuLines } from '../components/MenuLines'
 import { PhotoDrop } from '../components/PhotoDrop'
 import { ScanView, type ScanPhase } from '../components/ScanView'
 import { PHOTO_TIMEOUT_MS, api, errorText } from '../lib/api'
+import { setOwnerKey } from '../lib/ownerKey'
 import { useShop } from '../lib/shop'
-import type { DraftResponse, Product, ProductInput, Shop, ShopDetail } from '../lib/types'
+import type { DraftResponse, Product, ProductInput, PublishResponse, Shop, ShopDetail } from '../lib/types'
 import {
   Button,
   Card,
@@ -566,9 +567,11 @@ export function CatalogReview() {
   async function publish() {
     setPublishing(true)
     try {
-      const res = await api<ShopDetail>(`/api/shops/${shopId}/publish`, { method: 'POST' })
-      setData(res)
-      navigate(`/shop/${shopId}/live`)
+      const { owner_key: ownerKey, ...detail } = await api<PublishResponse>(`/api/shops/${shopId}/publish`, { method: 'POST' })
+      // Going live replaced the draft key: keep the new one, and show it once on the next screen.
+      if (ownerKey) setOwnerKey(shopId, ownerKey)
+      setData(detail)
+      navigate(`/shop/${shopId}/live`, { state: ownerKey ? { ownerKey } : null })
     } catch (err) {
       toast.show(errorText(err), 'error')
     } finally {

@@ -19,6 +19,18 @@ class Store(ABC):
     @abstractmethod
     def save_shop(self, shop: Shop) -> Shop: ...
 
+    # Owner keys: only the hash, kept apart from the Shop so it is never sent to anyone.
+    @abstractmethod
+    def get_owner_key_hash(self, shop_id: str) -> str | None: ...
+
+    @abstractmethod
+    def set_owner_key_hash(self, shop_id: str, key_hash: str) -> None:
+        """Replace the shop's key hash (one key per shop)."""
+
+    @abstractmethod
+    def find_shop_by_owner_key_hash(self, key_hash: str) -> str | None:
+        """The shop id whose key has this hash, or None."""
+
     # Products
     @abstractmethod
     def get_product(self, product_id: str) -> Product | None: ...

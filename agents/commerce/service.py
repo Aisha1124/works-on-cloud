@@ -44,6 +44,17 @@ STATUS_MESSAGES = {
     OrderStatus.done: "Order collected. Thank you!",
 }
 
+# Model status -> what a buyer (agent or customer) sees. Stored orders, the dashboard and UCP
+# keep the model statuses.
+BUYER_STATUS = {
+    OrderStatus.auto_approved: "confirmed",
+    OrderStatus.approved: "confirmed",
+    OrderStatus.pending_approval: "pending_owner_approval",
+    OrderStatus.rejected: "rejected",
+    OrderStatus.ready: "ready",
+    OrderStatus.done: "done",
+}
+
 # Review code -> plain sentence for the customer when their order is held. "risk" covers holds
 # from the risk score alone and says nothing about how scoring works.
 HOLD_SENTENCES = {
@@ -94,7 +105,9 @@ def _norm(text: str) -> str:
 
 
 def _default_actor(channel: Channel) -> Actor:
-    return Actor.owner if channel == Channel.dashboard else Actor.external_agent
+    if channel == Channel.dashboard:
+        return Actor.owner
+    return Actor.customer if channel == Channel.web else Actor.external_agent
 
 
 # --- Search -------------------------------------------------------------------------

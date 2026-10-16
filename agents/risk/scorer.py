@@ -211,7 +211,8 @@ _NOTE_PATTERNS: list[tuple[str, re.Pattern]] = [
         r"|\byou are (?:now )?(?:an?|the) |\bact as\b|^\s*(?:system|assistant)\s*:"
         r"|(?:auto[- ]?)?approve (?:this|the|my) order|mark (?:this|the|it|order) (?:as )?(?:approved|paid)"
         r"|(?:set|change) (?:the )?(?:order )?status|override|bypass"
-        r"|do not (?:flag|check|hold|review)|skip (?:the )?(?:risk|check|review|approval)",
+        r"|do not (?:flag|check|hold|review)|skip (?:the )?(?:risk|check|review|approval)"
+        r"|(?:set|change|make|update|reduce) (?:all |every |each |the |my )*(?:prices?|totals?|costs?)",
         re.IGNORECASE | re.MULTILINE)),
     ("a payment change request", re.compile(
         r"pay ?now (?:to|at|number|\+?\d)|pay(?:ment)? (?:to|into|via) (?:my|this|another|a different|the following)"
@@ -224,6 +225,12 @@ _NOTE_PATTERNS: list[tuple[str, re.Pattern]] = [
 
 def note_flags(note: str) -> list[str]:
     return [label for label, pattern in _NOTE_PATTERNS if pattern.search(note or "")]
+
+
+def looks_like_instructions(text: str) -> bool:
+    """Text that tries to instruct an AI or the system (e.g. "ignore previous instructions").
+    Used to flag menu text too; the text is always kept as data, never followed."""
+    return "instructions aimed at the system" in note_flags(text)
 
 
 # --- Rules --------------------------------------------------------------------------

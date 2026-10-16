@@ -16,8 +16,9 @@ from agents.catalog.schema import CatalogDraft, DraftProduct
 from backend.api.config import Settings
 from backend.api.main import create_app
 from backend.models import Product, Shop, Variant
+from tests.conftest import TEST_OWNER_KEY, give_key
 
-KEY = "test-owner-key"
+KEY = TEST_OWNER_KEY
 H = {"X-Owner-Key": KEY}
 DIST_HTML = "<!doctype html><html><head><title>KampungCart</title></head><body><div id=root></div></body></html>"
 
@@ -45,7 +46,7 @@ def store(app):
 
 @pytest.fixture
 def draft_shop(store) -> Shop:
-    shop = store.save_shop(Shop(slug="sample-bakery-ab12", name="Sample Bakery"))
+    shop = give_key(store, store.save_shop(Shop(slug="sample-bakery-ab12", name="Sample Bakery")))
     store.save_product(Product(shop_id=shop.id, name="Kuih Lapis", category="Kuih",
                                variants=[Variant(label="20 pcs", price=Decimal("16"))],
                                confidence=0.4))
@@ -59,7 +60,6 @@ def audit_actions(store, shop_id):
 # --- auth ------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("method,path", [
-    ("get", "/api/shops"),
     ("get", "/api/shops/x"),
     ("post", "/api/shops/x/publish"),
     ("post", "/api/shops/x/products"),
@@ -72,12 +72,13 @@ def test_owner_routes_need_key(api, method, path):
 
 # --- shop ------------------------------------------------------------------------------
 
-def test_list_and_get_shop(api, draft_shop):
+def test_there_is_no_list_of_all_shops(api, draft_shop):
     r = api.get("/api/shops", headers=H)
-    assert r.status_code == 200
-    assert r.json() == [{"id": draft_shop.id, "name": "Sample Bakery",
-                         "slug": "sample-bakery-ab12", "published": False}]
+    assert r.status_code in (404, 405)
+    assert "Sample Bakery" not in r.text
 
+
+def test_get_shop(api, draft_shop):
     r = api.get(f"/api/shops/{draft_shop.id}", headers=H)
     body = r.json()
     assert body["shop"]["auto_approve_limit"] == "150"
@@ -87,7 +88,7 @@ def test_list_and_get_shop(api, draft_shop):
         "mcp": "https://kc.example.sg/mcp",
         "public_page": "https://kc.example.sg/s/sample-bakery-ab12",
     }
-    assert api.get("/api/shops/nope", headers=H).status_code == 404
+    assert api.get("/api/shops/nope", headers=H).status_code == 401
 
 
 def test_patch_shop_type(api, store, draft_shop):
@@ -101,20 +102,22 @@ def test_publish_makes_clean_unique_stable_slug(api, store, draft_shop):
     r = api.post(f"/api/shops/{draft_shop.id}/publish", headers=H)
     assert r.status_code == 200
     body = r.json()
+    owner = {"X-Owner-Key": body["owner_key"]}  # going live replaces the draft key
     assert body["shop"]["published"] is True
     assert body["shop"]["slug"] == "sample-bakery-2"
     assert body["links"]["public_page"].endswith("/s/sample-bakery-2")
     assert "shop_published" in audit_actions(store, draft_shop.id)
 
     # Renaming and publishing again keeps the live URL.
-    api.patch(f"/api/shops/{draft_shop.id}", json={"name": "New Name"}, headers=H)
-    r = api.post(f"/api/shops/{draft_shop.id}/publish", headers=H)
+    api.patch(f"/api/shops/{draft_shop.id}", json={"name": "New Name"}, headers=owner)
+    r = api.post(f"/api/shops/{draft_shop.id}/publish", headers=owner)
     assert r.json()["shop"]["slug"] == "sample-bakery-2"
+    assert r.json()["owner_key"] is None  # the key is only shown once
     assert audit_actions(store, draft_shop.id).count("shop_published") == 1
 
 
 def test_publish_needs_an_orderable_item(api, store):
-    shop = store.save_shop(Shop(slug="empty-1", name="Empty"))
+    shop = give_key(store, store.save_shop(Shop(slug="empty-1", name="Empty")))
     store.save_product(Product(shop_id=shop.id, name="No price"))
     r = api.post(f"/api/shops/{shop.id}/publish", headers=H)
     assert r.status_code == 400

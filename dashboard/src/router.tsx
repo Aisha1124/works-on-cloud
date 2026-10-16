@@ -3,6 +3,7 @@ import { ShopLayout } from './components/ShopLayout'
 import { Audit } from './pages/Audit'
 import { CatalogReview } from './pages/CatalogReview'
 import { Live } from './pages/Live'
+import { Login } from './pages/Login'
 import { NotFound } from './pages/NotFound'
 import { Onboarding } from './pages/Onboarding'
 import { Orders } from './pages/Orders'
@@ -11,6 +12,7 @@ import { Styleguide } from './pages/Styleguide'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Onboarding /> },
+  { path: '/login', element: <Login /> },
   {
     path: '/shop/:id',
     element: <ShopLayout />,

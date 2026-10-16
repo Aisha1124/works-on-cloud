@@ -15,6 +15,7 @@ const actors: { id: Actor | 'all'; label: string }[] = [
   { id: 'risk_agent', label: 'Risk agent' },
   { id: 'shopper_agent', label: 'Shopper agent' },
   { id: 'external_agent', label: 'External agent' },
+  { id: 'customer', label: 'Customer' },
   { id: 'system', label: 'System' },
 ]
 
