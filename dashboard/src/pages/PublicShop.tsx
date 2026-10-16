@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowRight, Bot, Clock, MapPin, Phone } from 'lucide-react'
+import { ArrowDown, ArrowRight, Bot, Clock, MapPin, PauseCircle, Phone } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ErrorCard } from '../components/ErrorCard'
@@ -58,6 +58,7 @@ export function PublicShop() {
   const [placed, setPlaced] = useState<WebOrder | null>(() => loadLastOrder(slug))
   const { quote, error: quoteError } = useCartQuote(slug, cart)
   const count = cart.reduce((n, l) => n + l.qty, 0)
+  const paused = !!shop?.ordering_message
 
   useEffect(() => {
     if (shop) document.title = `${shop.name} · KampungCart`
@@ -128,6 +129,13 @@ export function PublicShop() {
             </ul>
           )}
 
+          {shop.ordering_message && (
+            <p role="status" className="flex items-center gap-3 border-2 border-ink bg-turmeric p-4 text-lg font-semibold shadow-hard-sm">
+              <PauseCircle aria-hidden className="size-6 flex-none" />
+              {shop.ordering_message}
+            </p>
+          )}
+
           {placed && <OrderResult key={placed.order_id} initial={placed} onNewOrder={newOrder} />}
 
           {page.data.products.length === 0 ? (
@@ -144,9 +152,11 @@ export function PublicShop() {
                     <li key={p.id} className="flex flex-col gap-1.5">
                       <MenuLines product={p} />
                       {p.description && <p className="text-sm text-ink-soft">{p.description}</p>}
-                      <div className="flex justify-end">
-                        <AddToOrder product={p} onAdd={add} />
-                      </div>
+                      {!paused && (
+                        <div className="flex justify-end">
+                          <AddToOrder product={p} onAdd={add} />
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -156,7 +166,7 @@ export function PublicShop() {
             ))
           )}
 
-          {cart.length > 0 && (
+          {cart.length > 0 && !paused && (
             <Checkout
               slug={slug}
               products={page.data.products}
@@ -181,7 +191,7 @@ export function PublicShop() {
             </p>
           </section>
 
-          {cart.length > 0 && (
+          {cart.length > 0 && !paused && (
             <div className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-ink bg-receipt">
               <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
                 <p className="font-mono text-sm">

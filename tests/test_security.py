@@ -199,12 +199,21 @@ def test_low_risk_customer_order_is_confirmed(api, store):
 
 
 def test_held_customer_order_says_why_in_plain_english(api, store):
-    make_shop(store, "shop-a", "kc_key-a", hours="Tue-Sun 9am-6pm")
-    r = web_order(api, pickup_time=pickup(hour=22))
+    make_shop(store, "shop-a", "kc_key-a")
+    r = web_order(api, items=[{"product_id": "shop-a-lapis", "variant": "20 pcs", "qty": 10}])
     assert r.status_code == 201
     assert r.json()["status"] == "pending_owner_approval"
-    assert r.json()["message"] == ("The shop is closed at your pickup time. "
+    assert r.json()["message"] == ("Orders over S$150.00 need the owner's OK. "
                                    "Your order has been sent to the owner for approval.")
+
+
+def test_closed_pickup_is_refused_with_the_next_times(api, store):
+    make_shop(store, "shop-a", "kc_key-a")  # Daily 8am-8pm
+    r = web_order(api, pickup_time=pickup(hour=22))
+    assert r.status_code == 400
+    assert "The shop is closed at" in r.json()["detail"]
+    assert f"Next available pickup times (Singapore): {pickup(days=3, hour=8)}" in (
+        r.json()["detail"])
 
 
 def test_customer_order_errors_are_friendly(api, store):

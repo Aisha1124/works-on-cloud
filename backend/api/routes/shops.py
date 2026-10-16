@@ -9,6 +9,7 @@ which is returned once and stored only as a hash.
 import asyncio
 import re
 import unicodedata
+from datetime import date
 from decimal import Decimal
 
 from fastapi import (
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field
 from agents.catalog import extract as catalog
 from agents.catalog.checks import menu_checks
 from agents.catalog.images import NOT_AN_IMAGE, ImageError, preprocess, sniff_image_type
+from agents.commerce import pickup
 from backend.api.deps import caller, require_owner
 from backend import emails, mailer, owner_session
 from backend.audit import log_event
@@ -69,11 +71,16 @@ class ShopDetail(BaseModel):
     links: ShopLinks
     # product id -> why the owner should check it (agents/catalog/checks.py). Guidance only.
     checks: dict[str, list[str]] = {}
+    # The hours as a weekly table for the settings page (9am-6pm daily if unreadable).
+    opening_hours: list[dict] = []
+    hours_readable: bool = True
 
 
 def shop_detail(settings, shop: Shop, products: list[Product], cls=None, **extra):
     return (cls or ShopDetail)(shop=shop, products=products, links=shop_links(settings, shop),
-                               checks=menu_checks(products), **extra)
+                               checks=menu_checks(products),
+                               opening_hours=pickup.week_table(shop),
+                               hours_readable=pickup.hours_readable(shop), **extra)
 
 
 class PublishResponse(ShopDetail):
@@ -302,23 +309,55 @@ def resend_verify_email(request: Request, background: BackgroundTasks, shop_id: 
     return {"sent_to": shop.owner_email, "verified": False}
 
 
+class DayHours(BaseModel):
+    day: int = Field(ge=0, le=6)  # 0 = Monday
+    closed: bool = False
+    open: str = Field(default="09:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    close: str = Field(default="18:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
 class ShopSettingsUpdate(BaseModel):
-    """Only the fields sent are changed."""
+    """Only the fields sent are changed. daily_capacity and paused_until can be cleared with
+    null (daily_capacity 0 also means no limit)."""
 
     name: str | None = Field(default=None, min_length=1, max_length=80)
     tagline: str | None = Field(default=None, max_length=160)
     shop_type: str | None = Field(default=None, max_length=60)
     address: str | None = Field(default=None, max_length=200)
     hours: str | None = Field(default=None, max_length=200)
+    # The weekly table from the settings page; saved as hours text (pickup.format_week).
+    opening_hours: list[DayHours] | None = Field(default=None, min_length=7, max_length=7)
     phone: str | None = Field(default=None, max_length=30)
     auto_approve_limit: Decimal | None = Field(default=None, ge=0, le=100000, decimal_places=2)
+    min_notice_hours: int | None = Field(default=None, ge=0, le=336)
+    daily_capacity: int | None = Field(default=None, ge=0, le=1000)
+    approval_timeout_hours: int | None = Field(default=None, ge=1, le=168)
+    cancel_cutoff_hours: int | None = Field(default=None, ge=0, le=168)
+    paused_until: date | None = None
+
+
+NULLABLE = {"daily_capacity", "paused_until"}
 
 
 @router.patch("/{shop_id}", response_model=Shop, dependencies=OWNER)
 def update_shop_settings(request: Request, shop_id: str, body: ShopSettingsUpdate) -> Shop:
     store = request.app.state.store
     shop = _shop_or_404(store, shop_id)
-    changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    changes = {k: v for k, v in body.model_dump(exclude_unset=True).items()
+               if v is not None or k in NULLABLE}
+    if "opening_hours" in changes:
+        table = changes.pop("opening_hours")
+        if {row["day"] for row in table} != set(range(7)):
+            raise HTTPException(status_code=400, detail="Send hours for all 7 days.")
+        if all(row["closed"] for row in table):
+            raise HTTPException(status_code=400, detail=(
+                "Open at least one day. To stop orders for a while, use Pause orders instead."))
+        if any(not row["closed"] and row["open"] == row["close"] for row in table):
+            raise HTTPException(status_code=400,
+                                detail="Opening and closing time can't be the same.")
+        changes["hours"] = pickup.format_week(table)
+    if changes.get("daily_capacity") == 0:
+        changes["daily_capacity"] = None
     if not changes:
         raise HTTPException(status_code=400, detail="Nothing to change.")
     before = {k: getattr(shop, k) for k in changes}

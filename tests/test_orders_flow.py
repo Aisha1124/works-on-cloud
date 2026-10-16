@@ -83,11 +83,13 @@ def test_total_above_limit_is_held_even_when_low_risk(store, demo, gemini_settin
 
 
 def test_fake_phone_is_high_and_held(store, demo, gemini_settings):
-    # The suspicious demo order: fake number and a rushed pickup.
+    # The suspicious demo order: fake number and a rushed pickup (28 hours away: just past the
+    # shop's 24 hours' notice, so inside the 24 + 12 hour rush window).
     order = place(store, demo, gemini_settings, customer_phone="12345",
-                  pickup_at=NOW + timedelta(hours=3))
+                  pickup_at=NOW + timedelta(hours=28))
     assert order.risk.level == RiskLevel.high
     assert order.risk.score == 65  # 40 phone + 10 first order + 15 rushed
+    assert "Rushed pickup: less than 36 hours away" in order.risk.reasons
     assert order.status == OrderStatus.pending_approval
     assert "Phone number is not a valid Singapore number" in order.risk.reasons
 
@@ -228,7 +230,9 @@ def test_naive_pickup_is_singapore_time(store, demo, gemini_settings):
 @pytest.mark.parametrize("kw, message", [
     ({"customer_name": " "}, "customer_name is required."),
     ({"customer_phone": ""}, "customer_phone is required."),
-    ({"pickup_at": NOW - timedelta(minutes=1)}, "pickup_at must be in the future"),
+    ({"pickup_at": NOW - timedelta(minutes=1)}, "pickup time must be in the future"),
+    ({"pickup_at": NOW + timedelta(hours=5)}, "needs 24 hours' notice"),
+    ({"pickup_at": "2026-10-19T10:00"}, "closed at Mon 19 Oct 10:00"),
     ({"pickup_at": "Saturday"}, "pickup_at must be a date and time"),
     ({"note": "x" * 501}, "note is too long"),
 ])

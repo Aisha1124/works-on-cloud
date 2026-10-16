@@ -5,6 +5,7 @@ import pytest
 from agents.commerce import service as commerce
 from agents.commerce.service import OrderValidationError
 from backend.models import Actor, Channel
+from tests.conftest import NOW
 
 
 def quote(store, demo, *items):
@@ -201,22 +202,30 @@ def test_owner_review_reasons(store, demo):
     q = commerce.get_quote(
         store, demo.shop.id,
         [{"name": "Kuih Lapis", "variant": "40 pcs", "qty": 121, "request": "Gift wrap"}],
-        pickup_at="2026-10-19T10:00")  # a Monday; the shop opens Tue-Sun
+        pickup_at="2026-10-17T10:00", now=NOW)
     assert q.review_reasons == [
         "Custom request for Kuih Lapis; the owner must confirm it",
         "Quantity 121 x Kuih Lapis is above this shop's usual maximum "
         "(3x its largest pack of 40)",
         "Total S$3630.00 is above the S$150.00 auto-approve limit",
-        "Pickup Mon 19 Oct 10:00 is outside opening hours (Tue-Sun 9am-6pm)",
     ]
-    assert q.review_codes == ["custom_request", "unusual_qty", "over_limit", "closed"]
-    assert q.items[0].request == "Gift wrap"
+    assert q.review_codes == ["custom_request", "unusual_qty", "over_limit"]
+    assert q.items[0].request == "Gift wrap" and q.pickup_problem == ""
     assert commerce.hold_message(demo.shop, q.review_codes) == (
         "Your order has a custom request that the owner needs to confirm. "
         "This is a bigger quantity than the shop usually makes. "
         "Orders over S$150.00 need the owner's OK. "
-        "The shop is closed at your pickup time. "
         "Your order has been sent to the owner for approval.")
+
+
+def test_quote_for_a_closed_day_names_the_next_pickup_times(store, demo):
+    q = commerce.get_quote(store, demo.shop.id, [{"name": "Kuih Lapis", "variant": "20 pcs",
+                                                  "qty": 1}],
+                           pickup_at="2026-10-19T10:00", now=NOW)  # a Monday; Tue-Sun 9-6
+    assert q.pickup_problem == ("The shop is closed at Mon 19 Oct 10:00. "
+                                "Opening hours: Tue-Sun 9am-6pm.")
+    assert q.next_pickups == ["2026-10-20T09:00", "2026-10-20T09:30", "2026-10-20T10:00"]
+    assert q.total == Decimal("16.00")  # still priced
 
 
 def test_hold_message_for_risk_only_and_repeated_codes(demo):

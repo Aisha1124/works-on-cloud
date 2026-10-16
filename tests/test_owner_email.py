@@ -256,13 +256,12 @@ def test_every_new_order_emails_the_owner(app, store, mail, channel, label):
 
 def test_held_order_email_says_why_and_its_button_signs_the_owner_in(app, api, store, mail):
     shop = live_shop(store)
-    store.save_shop(shop.model_copy(update={"hours": "Tue-Sun 9am-6pm"}))
-    monday = (now_sg() + timedelta(days=(7 - now_sg().weekday()) % 7 or 7)).replace(hour=10, minute=0)
-    order = place(store, app.state.settings, Channel.mcp, pickup=monday, agent="Claude")
+    order = place(store, app.state.settings, Channel.mcp, agent="Claude",
+                  items=[{"product_id": "mak-kuih-lapis", "variant": "20 pcs", "qty": 10}])
     assert order.status == "pending_approval"
     email = mail.sent[-1]
     assert email.subject.startswith("Action needed: Siti's order is waiting for you")
-    assert "Why it's waiting" in email.text and "outside opening hours" in email.text
+    assert "Why it's waiting" in email.text and "auto-approve limit" in email.text
     assert "Review order" in email.html
 
     token = token_in(email, "signin")

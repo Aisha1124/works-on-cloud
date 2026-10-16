@@ -25,6 +25,8 @@ class ShopLike(Protocol):
     phone: str
     currency: str
     example: bool
+    min_notice_hours: int
+    ordering_message: str  # "Not taking orders until ..." while paused, else ""
 
 
 def _price(value: Decimal) -> str:
@@ -146,6 +148,8 @@ def shop_llms_txt(shop: ShopLike, products: list[Product], *, page_url: str, mcp
     lines = [f"# {_one_line(shop.name)}", ""]
     if about:
         lines += [f"> {' '.join(about)}", ""]
+    if shop.ordering_message:
+        lines += [f"**{shop.ordering_message}**", ""]
     details = [("Type", shop.shop_type), ("Address", shop.address), ("Phone", shop.phone),
                ("Currency", shop.currency)]
     lines += [f"- {k}: {_one_line(v)}" for k, v in details if v.strip()]
@@ -161,10 +165,13 @@ def shop_llms_txt(shop: ShopLike, products: list[Product], *, page_url: str, mcp
         "## Pickup rules", "",
         "- Pickup only, at the shop. No delivery.",
         "- Pay at pickup. No payment details are collected online.",
-        "- The pickup time must be in the future (Singapore time).",
+        "- The pickup time (Singapore time) must be inside the opening hours and at least "
+        f"{shop.min_notice_hours} hours after ordering. Fully booked days are not available. "
+        "An agent that asks for another time gets the next available pickup times.",
+        *([f"- {shop.ordering_message}"] if shop.ordering_message else []),
         f"- Quantity per line: {MIN_QTY} to {MAX_QTY}.",
-        "- Orders for a pickup outside opening hours, large orders and unusual orders wait for "
-        "the owner's approval before they are confirmed.",
+        "- Large orders and unusual orders wait for the owner's approval before they are "
+        "confirmed.",
         "",
         "## How to order", "",
         f"- People: open the shop page {page_url} and order there. No account needed.",
@@ -191,6 +198,8 @@ def site_llms_txt(shops: list[tuple[ShopLike, str]], *, base: str, mcp_url: str,
         about = ", ".join(_one_line(x) for x in (shop.shop_type, shop.address) if x.strip())
         if shop.example:
             about = f"{about}. {EXAMPLE_LINE}" if about else EXAMPLE_LINE
+        if shop.ordering_message:
+            about = f"{about}. {shop.ordering_message}" if about else shop.ordering_message
         lines.append(f"- [{_one_line(shop.name)}]({page_url}/llms.txt)"
                      + (f": {about}" if about else ""))
     lines += [

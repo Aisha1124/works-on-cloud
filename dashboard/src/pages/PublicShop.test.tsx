@@ -50,6 +50,41 @@ describe('customer shop page', () => {
     expect(screen.queryByText('Example shop')).toBeNull()
   })
 
+  it('says when the shop is paused and takes no orders', async () => {
+    const paused = { ...PAGE, shop: { ...PAGE.shop, ordering_message: 'Not taking orders until Mon 26 Oct 2026.' } }
+    stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: paused } : undefined))
+    renderAt('/s/mak-kuih', routes)
+    expect(await screen.findByText('Not taking orders until Mon 26 Oct 2026.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Add Kuih Lapis/ })).toBeNull()
+  })
+
+  it('offers only the pickup times the shop can take', async () => {
+    const SLOTS = {
+      min_notice_hours: 24,
+      message: '',
+      days: [
+        { date: '2026-10-20', label: 'Tue 20 Oct', times: [{ value: '2026-10-20T09:00', label: '09:00' }, { value: '2026-10-20T09:30', label: '09:30' }] },
+        { date: '2026-10-21', label: 'Wed 21 Oct', times: [{ value: '2026-10-21T14:00', label: '14:00' }] },
+      ],
+    }
+    stubApi((url) => {
+      if (url === '/api/public/shops/mak-kuih') return { body: PAGE }
+      if (url === '/api/public/shops/mak-kuih/slots') return { body: SLOTS }
+      if (url === '/api/public/shops/mak-kuih/quote') return { body: { items: [], total: '16.00', currency: 'SGD' } }
+      return undefined
+    })
+    renderAt('/s/mak-kuih', routes)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Kuih Lapis' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to order' }))
+    const day = (await screen.findByLabelText('Day')) as HTMLSelectElement
+    expect([...day.options].map((o) => o.text)).toEqual(['Tue 20 Oct', 'Wed 21 Oct'])
+    const time = screen.getByLabelText('Time') as HTMLSelectElement
+    expect([...time.options].map((o) => o.text)).toEqual(['Choose a time', '09:00', '09:30'])
+    fireEvent.change(day, { target: { value: '2026-10-21' } })
+    expect([...(screen.getByLabelText('Time') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['', '2026-10-21T14:00'])
+    expect(screen.getByText("This shop needs 24 hours' notice. Only open times are shown.")).toBeTruthy()
+  })
+
   it('still links home when the shop is not found', async () => {
     stubApi(() => undefined)
     renderAt('/s/nope', routes)

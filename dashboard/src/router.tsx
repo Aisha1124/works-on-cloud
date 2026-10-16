@@ -10,6 +10,7 @@ import { Onboarding } from './pages/Onboarding'
 import { OrderStatus } from './pages/OrderStatus'
 import { Orders } from './pages/Orders'
 import { PublicShop } from './pages/PublicShop'
+import { Settings } from './pages/Settings'
 import { Styleguide } from './pages/Styleguide'
 
 export const router = createBrowserRouter([
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: 'live', element: <Live /> },
       { path: 'orders', element: <Orders /> },
       { path: 'audit', element: <Audit /> },
+      { path: 'settings', element: <Settings /> },
     ],
   },
   { path: '/s/:slug', element: <PublicShop /> },

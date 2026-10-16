@@ -19,6 +19,7 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, Field
 
 from agents.approval import service as approval
+from agents.commerce import pickup
 from agents.commerce import service as commerce
 from backend import notify
 from backend.api.config import Settings
@@ -38,10 +39,13 @@ INSTRUCTIONS = (
     "KampungCart lists small Singapore shops (home bakers, hawker stalls, heartland shops). "
     "Typical flow: find_shops -> get_menu -> get_quote -> place_pickup_order -> "
     "get_order_status. Prices are in SGD and always come from the shop's menu; any price you "
-    "send is ignored. Payment is made at pickup; no payment details are collected. Orders for "
-    "items not on the menu, custom requests, unusual quantities, large totals, pickups outside "
-    "opening hours or risky orders are held (pending_owner_approval) until the shop owner "
-    "decides, so check get_order_status later."
+    "send is ignored. Payment is made at pickup; no payment details are collected. The pickup "
+    "time must be inside opening hours, after the shop's minimum notice and on a day that "
+    "isn't fully booked; if not, you get the reason and the next available times. Orders for "
+    "items not on the menu, custom requests, unusual quantities, large totals or risky orders "
+    "are held (pending_owner_approval) until the shop owner decides, so check "
+    "get_order_status later. Send an idempotency_key with place_pickup_order so a retry never "
+    "orders twice."
 )
 
 BUYER_STATUS = commerce.BUYER_STATUS
@@ -124,8 +128,44 @@ def _quote_out(shop: Shop, quote: commerce.Quote) -> dict[str, Any]:
         "approval_message": (" ".join(commerce.hold_sentences(shop, quote.review_codes))
                              + " The owner would need to approve this order."
                              if quote.review_reasons else ""),
+        **_pickup_out(quote),
+        **_paused_out(shop),
         "payment": "Pay at pickup",
     }
+
+
+def _pickup_out(quote: commerce.Quote) -> dict[str, Any]:
+    """Only when a pickup time was checked and the shop can't take it."""
+    if not quote.pickup_problem:
+        return {}
+    return {"pickup_ok": False, "pickup_problem": quote.pickup_problem,
+            "next_available_pickups": quote.next_pickups}
+
+
+def _paused_out(shop: Shop) -> dict[str, Any]:
+    message = pickup.paused_message(shop)
+    return {"ordering_paused_message": f"{shop.name}: {message}"} if message else {}
+
+
+def _placed_out(settings: Settings, shop: Shop, order, duplicate: bool) -> dict[str, Any]:
+    out = {"order_id": order.id, "status": BUYER_STATUS[order.status],
+           "subtotal": _money(order.total), "currency": shop.currency,
+           "unpriced_items": _unpriced_out(order.unpriced_requests),
+           "pickup_time": to_sg(order.pickup_at).isoformat(),
+           "message": commerce.buyer_message(shop, order),
+           "status_url": notify.status_url(settings, order),
+           "status_url_note": ("Give this private link to the buyer: they can check "
+                               "the order and cancel it there."),
+           "payment": "Pay at pickup"}
+    if order.status == OrderStatus.pending_approval:
+        # Only the deterministic menu/limit reasons. Risk scoring stays private so it can't
+        # be gamed.
+        out["approval_reasons"] = order.review_reasons
+    if duplicate:
+        out["duplicate"] = True
+        out["duplicate_note"] = ("This idempotency_key was already used: this is the order it "
+                                 "placed. No new order was created.")
+    return out
 
 
 def _error(message: str) -> CallToolResult:
@@ -217,7 +257,11 @@ def create_mcp_server(store: Store, settings: Settings,
             return {**_shop_summary(shop), "tagline": shop.tagline, "address": shop.address,
                     "hours": shop.hours, "phone": shop.phone, "currency": shop.currency,
                     "categories": categories, "payment": "Pay at pickup",
-                    "fulfillment": "Pickup at the shop"}
+                    "fulfillment": "Pickup at the shop",
+                    "min_notice_hours": shop.min_notice_hours,
+                    "next_available_pickups": [pickup.iso(s) for s in
+                                               pickup.next_slots(store, shop)],
+                    **_paused_out(shop)}
 
         return await run("get_shop", agent, by_slug(shop_slug), body)
 
@@ -239,7 +283,8 @@ def create_mcp_server(store: Store, settings: Settings,
             found = commerce.search_products(store, shop.id, query, category,
                                              available_only=False)
             return {"shop_slug": shop.slug, "items": [_menu_item(p) for p in found],
-                    "count": len(found), "currency": shop.currency, "hours": shop.hours}
+                    "count": len(found), "currency": shop.currency, "hours": shop.hours,
+                    **_paused_out(shop)}
 
         return await run("get_menu", agent, by_slug(shop_slug), body)
 
@@ -252,7 +297,9 @@ def create_mcp_server(store: Store, settings: Settings,
         items: Items,
         pickup_time: Annotated[str | None, Field(
             description="Optional pickup date and time in Singapore time, e.g. "
-                        "2026-10-17T10:00, to check it against opening hours.",
+                        "2026-10-17T10:00. If the shop can't take it (closed, too soon, "
+                        "fully booked or paused), the answer says why and lists the next "
+                        "available pickup times.",
             max_length=40)] = None,
         agent_name: AgentName = None,
     ) -> dict[str, Any]:
@@ -285,6 +332,11 @@ def create_mcp_server(store: Store, settings: Settings,
             description="Optional buyer email. If given, the buyer is emailed when the order "
                         "is confirmed, rejected, expires or is cancelled.",
             max_length=254)] = "",
+        idempotency_key: Annotated[str | None, Field(
+            description="Optional. Any unique string for this order, e.g. a UUID. If you send "
+                        "the same key again (say, after a timeout), you get the first order "
+                        "back instead of a duplicate.",
+            max_length=commerce.MAX_IDEMPOTENCY_KEY_LEN)] = None,
         agent_name: AgentName = None,
     ) -> dict[str, Any]:
         agent, key = caller(ctx, agent_name)
@@ -292,24 +344,12 @@ def create_mcp_server(store: Store, settings: Settings,
         async def body(shop: Shop):
             if not limiter.allow(key):
                 raise ToolError(RATE_LIMIT_MESSAGE)
-            order = await commerce.place_order(
-                store, shop.id, _items(items), customer_name, customer_phone, pickup_time, note,
-                Channel.mcp, agent, customer_email=customer_email, settings=settings)
-            held = order.status == OrderStatus.pending_approval
-            out = {"order_id": order.id, "status": BUYER_STATUS[order.status],
-                   "subtotal": _money(order.total), "currency": shop.currency,
-                   "unpriced_items": _unpriced_out(order.unpriced_requests),
-                   "pickup_time": to_sg(order.pickup_at).isoformat(),
-                   "message": commerce.buyer_message(shop, order),
-                   "status_url": notify.status_url(settings, order),
-                   "status_url_note": ("Give this private link to the buyer: they can check "
-                                       "the order and cancel it there."),
-                   "payment": "Pay at pickup"}
-            if held:
-                # Only the deterministic menu/limit reasons. Risk scoring stays private so
-                # it can't be gamed.
-                out["approval_reasons"] = order.review_reasons
-            return out
+            order, duplicate = await commerce.place_order_once(
+                store, shop.id, idempotency_key, lambda: commerce.place_order(
+                    store, shop.id, _items(items), customer_name, customer_phone, pickup_time,
+                    note, Channel.mcp, agent, customer_email=customer_email,
+                    settings=settings))
+            return _placed_out(settings, shop, order, duplicate)
 
         return await run("place_pickup_order", agent, by_slug(shop_slug), body)
 

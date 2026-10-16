@@ -8,7 +8,9 @@ or approval.OrderNotFound.
 """
 
 import asyncio
+import hashlib
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -16,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 
 from agents.approval import service as approval
+from agents.commerce import pickup
 from agents.risk import scorer as risk
 from backend.api.config import Settings, get_settings
 from backend import emails, mailer, notify, owner_session
@@ -63,7 +66,6 @@ BUYER_STATUS = {
 # Review code -> plain sentence for the customer when their order is held. "risk" covers holds
 # from the risk score alone and says nothing about how scoring works.
 HOLD_SENTENCES = {
-    "closed": "The shop is closed at your pickup time.",
     "not_on_menu": "Some items aren't on the shop's menu, so the owner needs to price them.",
     "custom_request": "Your order has a custom request that the owner needs to confirm.",
     "unusual_qty": "This is a bigger quantity than the shop usually makes.",
@@ -79,6 +81,19 @@ class OrderValidationError(ValueError):
     def __init__(self, errors: list[str]):
         self.errors = errors
         super().__init__(" ".join(errors))
+
+
+class PickupUnavailable(OrderValidationError):
+    """The shop can't take a pickup at that time. Carries the next valid times so an agent
+    can suggest one."""
+
+    def __init__(self, reason: str, next_slots: list[datetime]):
+        self.reason = reason
+        self.next_slots = next_slots
+        times = ", ".join(pickup.iso(s) for s in next_slots)
+        tail = (f" Next available pickup times (Singapore): {times}." if times
+                else " There are no free pickup times in the next weeks.")
+        super().__init__([reason + tail])
 
 
 class QuoteItemIn(BaseModel):
@@ -99,6 +114,9 @@ class Quote(BaseModel):
     unpriced: list[UnpricedRequest] = Field(default_factory=list)  # not on the menu, no price
     review_reasons: list[str] = Field(default_factory=list)  # why the owner must approve
     review_codes: list[str] = Field(default_factory=list)  # HOLD_SENTENCES keys, same order
+    # Only when a pickup time was given and the shop can't take it.
+    pickup_problem: str = ""
+    next_pickups: list[str] = Field(default_factory=list)  # ISO, Singapore time
 
 
 def _money(value: Decimal) -> Decimal:
@@ -323,12 +341,11 @@ def _quote_with_unpriced(store: Store, shop_id: str,
     return quote, products
 
 
-def review_checks(shop: Shop, quote: Quote, products: list[Product],
-                  pickup: datetime | None = None) -> list[tuple[str, str]]:
+def review_checks(shop: Shop, quote: Quote, products: list[Product]) -> list[tuple[str, str]]:
     """Deterministic reasons the owner must approve the order, whatever the risk score, as
-    (code, owner-facing text): items not on the menu, custom requests, unusual quantities, a
-    total above the shop's auto-approve limit, and a pickup outside opening hours (when a
-    pickup time is given). Codes are HOLD_SENTENCES keys."""
+    (code, owner-facing text): items not on the menu, custom requests, unusual quantities and a
+    total above the shop's auto-approve limit. Codes are HOLD_SENTENCES keys. (Pickups outside
+    opening hours are refused before this, see pickup.py.)"""
     checks = [("not_on_menu", f"{u.qty} x '{u.name}' is not on the menu; the owner will price it")
               for u in quote.unpriced]
     checks += [("custom_request", f"Custom request for {line.name}; the owner must confirm it")
@@ -342,22 +359,16 @@ def review_checks(shop: Shop, quote: Quote, products: list[Product],
     if quote.total > shop.auto_approve_limit:
         checks.append(("over_limit", f"Total S${quote.total:.2f} is above the "
                                      f"S${shop.auto_approve_limit:.2f} auto-approve limit"))
-    hours = risk.parse_hours(shop.hours) if pickup and shop.hours.strip() else None
-    if hours is not None and not risk.is_open(hours, pickup):
-        checks.append(("closed", f"Pickup {to_sg(pickup):%a %d %b %H:%M} is outside opening "
-                                 f"hours ({shop.hours})"))
     return checks
 
 
-def owner_review_reasons(shop: Shop, quote: Quote, products: list[Product],
-                         pickup: datetime | None = None) -> list[str]:
+def owner_review_reasons(shop: Shop, quote: Quote, products: list[Product]) -> list[str]:
     """The owner-facing text of review_checks."""
-    return [text for _, text in review_checks(shop, quote, products, pickup)]
+    return [text for _, text in review_checks(shop, quote, products)]
 
 
-def _review(shop: Shop, quote: Quote, products: list[Product],
-            pickup: datetime | None) -> None:
-    checks = review_checks(shop, quote, products, pickup)
+def _review(shop: Shop, quote: Quote, products: list[Product]) -> None:
+    checks = review_checks(shop, quote, products)
     quote.review_codes = [code for code, _ in checks]
     quote.review_reasons = [text for _, text in checks]
 
@@ -375,7 +386,7 @@ def hold_sentences(shop: Shop | None, codes: list[str]) -> list[str]:
 
 
 def hold_message(shop: Shop | None, codes: list[str]) -> str:
-    """e.g. 'The shop is closed at your pickup time. Your order has been sent to the owner
+    """e.g. 'Orders over S$150.00 need the owner's OK. Your order has been sent to the owner
     for approval.'"""
     return " ".join([*hold_sentences(shop, codes), SENT_TO_OWNER])
 
@@ -414,13 +425,21 @@ def get_quote(
     store: Store, shop_id: str, items: list[Any], *,
     channel: Channel = Channel.mcp, agent_name: str = "", actor: Actor | None = None,
     pickup_at: datetime | str | None = None,
+    now: datetime | None = None,
 ) -> Quote:
     """Price the items from the menu and say whether the owner would have to approve them.
-    Lines may name menu items instead of giving product ids; off-menu names are unpriced."""
+    Lines may name menu items instead of giving product ids; off-menu names are unpriced.
+    With a pickup time, also says if the shop can't take it and which times it can."""
     shop = _require_shop(store, shop_id)
-    pickup = _parse_pickup(pickup_at) if pickup_at else None
+    pickup_time = _parse_pickup(pickup_at) if pickup_at else None
     quote, products = _quote_with_unpriced(store, shop_id, items)
-    _review(shop, quote, products, pickup)
+    _review(shop, quote, products)
+    if pickup_time is not None:
+        problem = pickup.pickup_problem(store, shop, pickup_time, now)
+        if problem:
+            quote.pickup_problem = problem
+            quote.next_pickups = [pickup.iso(s) for s in
+                                  pickup.next_slots(store, shop, now, after=pickup_time)]
     _log_quote(store, shop_id, quote, actor or _default_actor(Channel(channel)),
                agent_name, Channel(channel))
     return quote
@@ -487,14 +506,15 @@ async def place_order(
     note = (note or "").strip()
     if len(note) > MAX_NOTE_LEN:
         errors.append(f"note is too long (max {MAX_NOTE_LEN} characters).")
-    pickup = _parse_pickup(pickup_at)
-    if pickup <= now:
-        errors.append("pickup_at must be in the future (Singapore time).")
+    pickup_time = _parse_pickup(pickup_at)
     if errors:
         raise OrderValidationError(errors)
+    problem = pickup.pickup_problem(store, shop, pickup_time, now)
+    if problem:
+        raise PickupUnavailable(problem, pickup.next_slots(store, shop, now, after=pickup_time))
 
     quote, products = _quote_with_unpriced(store, shop_id, items)
-    _review(shop, quote, products, pickup)
+    _review(shop, quote, products)
     _log_quote(store, shop_id, quote, actor, agent_name, channel)
 
     phone = risk.normalize_sg_phone(customer_phone) or customer_phone.strip()
@@ -502,7 +522,7 @@ async def place_order(
     order = Order(
         shop_id=shop_id, items=quote.items, total=quote.total,
         customer_name=customer_name, customer_phone=phone, customer_email=email,
-        pickup_at=pickup, note=note,
+        pickup_at=pickup_time, note=note,
         channel=channel, agent_name=agent_name, status=OrderStatus.pending_approval,
         unpriced_requests=quote.unpriced, review_reasons=quote.review_reasons,
         review_codes=quote.review_codes, status_token=notify.new_status_token(),
@@ -518,7 +538,7 @@ async def place_order(
 
     facts = risk.OrderFacts(
         shop=shop, lines=[(p, line.qty) for p, line in zip(products, quote.items, strict=True)],
-        total=quote.total, phone=customer_phone, agent_name=agent_name, pickup_at=pickup,
+        total=quote.total, phone=customer_phone, agent_name=agent_name, pickup_at=pickup_time,
         note=note, price_mismatch=quote.price_mismatch, previous_orders=previous, now=now,
         unpriced=len(quote.unpriced),
     )
@@ -551,6 +571,39 @@ async def place_order(
     if not held:
         _start_background(notify.customer_update(store, settings, order.id, "confirmed"))
     return order
+
+
+# --- Duplicate protection ---------------------------------------------------------------
+
+IDEMPOTENCY = "idempotency_keys"
+MAX_IDEMPOTENCY_KEY_LEN = 100
+IN_FLIGHT = ("An order with this idempotency_key is still being placed. Check again in a few "
+             "seconds; don't send it with a new key.")
+
+
+async def place_order_once(store: Store, shop_id: str, key: str | None,
+                           place: Callable[[], Awaitable[Order]]) -> tuple[Order, bool]:
+    """Run `place` once per (shop, idempotency key). -> (order, duplicate). The same key again
+    returns the first order instead of creating a new one. Without a key, always places."""
+    key = (key or "").strip()[:MAX_IDEMPOTENCY_KEY_LEN]
+    if not key:
+        return await place(), False
+    key_hash = hashlib.sha256(f"{shop_id}:{key}".encode()).hexdigest()
+    existing = store.claim(IDEMPOTENCY, key_hash, {"shop_id": shop_id, "order_id": "",
+                                                   "at": now_sg().isoformat()})
+    if existing is not None:
+        order = store.get_order(existing.get("order_id") or "")
+        if order is None:
+            raise OrderValidationError([IN_FLIGHT])
+        return order, True
+    try:
+        order = await place()
+    except BaseException:
+        store.pop_secret(IDEMPOTENCY, key_hash)  # nothing was placed: the key can be retried
+        raise
+    store.put_secret(IDEMPOTENCY, key_hash, {"shop_id": shop_id, "order_id": order.id,
+                                             "at": now_sg().isoformat()})
+    return order, False
 
 
 # --- Risk explanation in the background ------------------------------------------------

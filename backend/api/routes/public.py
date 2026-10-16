@@ -4,6 +4,7 @@ for AI crawlers, and pickup orders from customers (no key, no signup). Customers
 import hmac
 import html
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from agents.approval import service as approval
+from agents.commerce import pickup
 from agents.commerce import service as commerce
 from backend import ai_readable, mailer, notify
 from backend.api.config import Settings
@@ -41,6 +43,14 @@ class PublicShop(BaseModel):
     phone: str
     currency: str
     example: bool = False  # the sample shop: shows an "Example shop" label
+    min_notice_hours: int = 24
+    paused_until: date | None = None
+    # "Not taking orders until Mon 26 Oct 2026." while paused, else "".
+    ordering_message: str = ""
+
+
+def public_shop(shop: Shop) -> PublicShop:
+    return PublicShop(**shop.model_dump(), ordering_message=pickup.paused_message(shop))
 
 
 class PublicProduct(Product):
@@ -64,7 +74,7 @@ def _page(request: Request, slug: str) -> PublicShopPage | None:
         return None
     products = [PublicProduct(**p.model_dump()) for p in store.list_products(shop.id)
                 if p.available]
-    return PublicShopPage(shop=PublicShop(**shop.model_dump()), products=products,
+    return PublicShopPage(shop=public_shop(shop), products=products,
                           links=shop_links(request.app.state.settings, shop))
 
 
@@ -74,6 +84,39 @@ def get_public_shop(request: Request, slug: str) -> PublicShopPage:
     if page is None:
         raise HTTPException(status_code=404, detail="This shop isn't open on KampungCart.")
     return page
+
+
+class SlotTime(BaseModel):
+    value: str  # "2026-10-20T09:30", Singapore time: what the order form sends
+    label: str  # "09:30"
+
+
+class SlotDay(BaseModel):
+    date: str
+    label: str  # "Tue 20 Oct"
+    times: list[SlotTime]
+
+
+class PickupSlots(BaseModel):
+    days: list[SlotDay]
+    # Why there are no days, in plain words ("" when there are some).
+    message: str
+    min_notice_hours: int
+
+
+@router.get("/api/public/shops/{slug}/slots", response_model=PickupSlots)
+def get_pickup_slots(request: Request, slug: str) -> PickupSlots:
+    """The pickup times the shop page offers: inside opening hours, after the shop's notice,
+    not on full days, none while paused. Computed here so the browser does no time maths."""
+    store = request.app.state.store
+    try:
+        shop = published_shop(store, slug)
+    except ShopNotFound:
+        raise HTTPException(status_code=404, detail="This shop isn't open on KampungCart.") from None
+    days = pickup.available_days(store, shop)
+    message = pickup.paused_message(shop) or (
+        "" if days else "No pickup times are free in the next two weeks. Please call the shop.")
+    return PickupSlots(days=days, message=message, min_notice_hours=shop.min_notice_hours)
 
 
 # --- Customer orders ----------------------------------------------------------------
@@ -93,6 +136,8 @@ class WebOrderIn(BaseModel):
     pickup_time: str = Field(max_length=40)
     note: str = Field(default="", max_length=commerce.MAX_NOTE_LEN)
     customer_email: str = Field(default="", max_length=254)
+    # One per checkout attempt, so a double tap or a retry never orders twice.
+    idempotency_key: str = Field(default="", max_length=commerce.MAX_IDEMPOTENCY_KEY_LEN)
 
 
 class WebOrderLine(BaseModel):
@@ -185,11 +230,12 @@ async def place_web_order(request: Request, slug: str, body: WebOrderIn) -> WebO
     if not request.app.state.order_limiter.allow(caller(request)):
         raise HTTPException(status_code=429, detail=RATE_LIMIT_MESSAGE)
     try:
-        order = await commerce.place_order(
-            store, shop.id, [line.model_dump() for line in body.items], body.customer_name,
-            body.customer_phone, body.pickup_time, body.note, Channel.web, "",
-            customer_email=body.customer_email, actor=Actor.customer,
-            settings=request.app.state.settings)
+        order, _ = await commerce.place_order_once(
+            store, shop.id, body.idempotency_key, lambda: commerce.place_order(
+                store, shop.id, [line.model_dump() for line in body.items], body.customer_name,
+                body.customer_phone, body.pickup_time, body.note, Channel.web, "",
+                customer_email=body.customer_email, actor=Actor.customer,
+                settings=request.app.state.settings))
     except commerce.OrderValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return _order_out(request, shop, order)
@@ -290,7 +336,7 @@ def shop_llms_txt(request: Request, slug: str):
 def site_llms_txt(request: Request):
     """Every published shop, with links to their llms.txt and the MCP/UCP entry points."""
     settings = request.app.state.settings
-    shops = [(PublicShop(**s.model_dump()), shop_links(settings, s).public_page)
+    shops = [(public_shop(s), shop_links(settings, s).public_page)
              for s in published_shops(request.app.state.store)]
     base = base_url(settings)
     return PlainTextResponse(

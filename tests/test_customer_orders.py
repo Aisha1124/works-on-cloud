@@ -230,7 +230,8 @@ def test_customer_cancels_and_both_sides_are_told(api, shop, store, mail):
 
 def test_cancel_closes_at_the_shops_cutoff(api, shop, store):
     soon = (now_sg() + timedelta(hours=10)).strftime("%Y-%m-%dT%H:%M")
-    store.save_shop(store.get_shop(shop.id).model_copy(update={"hours": ""}))
+    store.save_shop(store.get_shop(shop.id).model_copy(update={
+        "hours": "Daily 12am-11:59pm", "min_notice_hours": 0}))
     body = web_order(api, pickup_time=soon)
     assert body["can_cancel"] is False  # 10 hours away, cutoff is 12
     r = cancel(api, body)

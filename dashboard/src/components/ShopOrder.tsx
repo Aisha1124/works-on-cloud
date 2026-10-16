@@ -2,8 +2,9 @@ import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError, api, errorText } from '../lib/api'
 import { lineKey } from '../lib/cart'
-import type { CartLine, PricedLine, Product, WebOrder, WebQuote } from '../lib/types'
-import { Button, Input, PriceTag, ReceiptCard, ReceiptDivider, ReceiptRow, ReceiptTotal, Select, Textarea } from '../ui'
+import { useLoad } from '../lib/hooks'
+import type { CartLine, PickupSlots, PricedLine, Product, WebOrder, WebQuote } from '../lib/types'
+import { Button, Input, PriceTag, ReceiptCard, ReceiptDivider, ReceiptRow, ReceiptTotal, Select, Skeleton, Textarea } from '../ui'
 import { tokenOf } from '../lib/order'
 import { OrderStatusCard } from './OrderStatusCard'
 
@@ -91,13 +92,72 @@ function QtyStepper({ qty, onChange, label }: { qty: number; onChange: (n: numbe
   )
 }
 
+/* ------------------------------------------------------------------ pickup time */
+
+/** Day, then time, from the slots the server offers: only times the shop can take (opening
+ *  hours, its notice, not on full days). `value` is "2026-10-20T09:30" in Singapore time. */
+function PickupPicker({ slug, value, onChange, error }: { slug: string; value: string; onChange: (v: string) => void; error?: string }) {
+  const slots = useLoad((signal) => api<PickupSlots>(`/api/public/shops/${encodeURIComponent(slug)}/slots`, { owner: false, signal }), slug)
+  const [day, setDay] = useState('')
+  const days = slots.data?.days ?? []
+  const current = days.find((d) => d.date === day) ?? days[0]
+
+  if (slots.error && !slots.data) {
+    return (
+      <p role="alert" className="font-semibold text-chili">
+        Couldn't load pickup times. {slots.error}
+      </p>
+    )
+  }
+  if (!slots.data) return <Skeleton rows={2} label="Loading pickup times" />
+  if (!days.length) {
+    return (
+      <p role="status" className="border-2 border-ink bg-turmeric-tint p-3 font-semibold">
+        {slots.data.message}
+      </p>
+    )
+  }
+  const notice = slots.data.min_notice_hours
+  return (
+    <fieldset className="flex flex-col gap-3">
+      <legend className="mb-1.5 text-sm font-semibold">Pickup time (Singapore time)</legend>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Select
+          label="Day"
+          value={current?.date ?? ''}
+          onChange={(e) => {
+            setDay(e.target.value)
+            onChange('')
+          }}
+        >
+          {days.map((d) => (
+            <option key={d.date} value={d.date}>
+              {d.label}
+            </option>
+          ))}
+        </Select>
+        <Select label="Time" value={value} onChange={(e) => onChange(e.target.value)} error={error}>
+          <option value="">Choose a time</option>
+          {current?.times.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {notice > 0 && <p className="text-sm text-ink-soft">This shop needs {notice} hours' notice. Only open times are shown.</p>}
+    </fieldset>
+  )
+}
+
 /* ------------------------------------------------------------------ checkout */
 
-function minPickup(): string {
-  const d = new Date(Date.now() + 60 * 60 * 1000)
-  d.setSeconds(0, 0)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+function newAttemptKey(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
 }
 
 export function Checkout({
@@ -125,6 +185,8 @@ export function Checkout({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // One key per checkout: a double tap or a retry returns the same order, never a second one.
+  const [attemptKey] = useState(newAttemptKey)
   const headingId = useId()
   const byId = new Map(products.map((p) => [p.id, p]))
 
@@ -143,7 +205,7 @@ export function Checkout({
       const order = await api<WebOrder>(`/api/public/shops/${encodeURIComponent(slug)}/orders`, {
         method: 'POST',
         owner: false,
-        json: { items: cart, customer_name: name, customer_phone: phone, customer_email: email.trim(), pickup_time: pickup, note },
+        json: { items: cart, customer_name: name, customer_phone: phone, customer_email: email.trim(), pickup_time: pickup, note, idempotency_key: attemptKey },
       })
       onPlaced(order)
     } catch (err) {
@@ -224,14 +286,7 @@ export function Checkout({
           error={errors.email}
           hint="We'll email you when the shop confirms, rejects or cancels."
         />
-        <Input
-          label="Pickup date and time (Singapore time)"
-          type="datetime-local"
-          min={minPickup()}
-          value={pickup}
-          onChange={(e) => setPickup(e.target.value)}
-          error={errors.pickup}
-        />
+        <PickupPicker slug={slug} value={pickup} onChange={setPickup} error={errors.pickup} />
         <Textarea label="Note for the shop (optional)" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
         {formError && (
           <p role="alert" className="font-semibold text-chili">

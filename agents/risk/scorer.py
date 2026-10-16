@@ -268,9 +268,10 @@ def score_rules(f: OrderFacts) -> Risk:
                                   f"(more than 3x the largest pack of {biggest})"))
             break
 
-    lead = f.pickup_at - f.now
-    if lead < timedelta(hours=RUSH_HOURS):
-        hits.append((RUSHED_PICKUP, f"Rushed pickup: less than {RUSH_HOURS} hours away"))
+    # Rushed = within RUSH_HOURS after the earliest pickup the shop allows (its notice).
+    rush = f.shop.min_notice_hours + RUSH_HOURS
+    if f.pickup_at - f.now < timedelta(hours=rush):
+        hits.append((RUSHED_PICKUP, f"Rushed pickup: less than {rush} hours away"))
 
     hours = parse_hours(f.shop.hours) if f.shop.hours.strip() else None
     if hours is not None and not is_open(hours, f.pickup_at):

@@ -47,6 +47,11 @@ class Store(ABC):
     def pop_secret(self, collection: str, key_hash: str) -> dict | None:
         """Remove and return it, atomically: a single-use secret can only be used once."""
 
+    @abstractmethod
+    def claim(self, collection: str, key_hash: str, data: dict) -> dict | None:
+        """Atomically create the record if there is none and return None; if one exists,
+        change nothing and return it. Used for idempotency keys."""
+
     # Products
     @abstractmethod
     def get_product(self, product_id: str) -> Product | None: ...

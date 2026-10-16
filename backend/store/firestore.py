@@ -44,6 +44,9 @@ class FirestoreStore(Store):
     def pop_secret(self, collection: str, key_hash: str) -> dict | None:
         raise NotImplementedError(_MSG)
 
+    def claim(self, collection: str, key_hash: str, data: dict) -> dict | None:
+        raise NotImplementedError(_MSG)
+
     def get_product(self, product_id: str) -> Product | None:
         raise NotImplementedError(_MSG)
 

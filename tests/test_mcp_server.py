@@ -173,7 +173,69 @@ async def test_get_quote_flags_items_not_on_the_menu(app, shop):
     assert quote["needs_owner_approval"] is True
     reasons = " | ".join(quote["approval_reasons"])
     assert "'Durian Cake' is not on the menu" in reasons
-    assert "outside opening hours" in reasons
+    # 10pm is after closing: the quote says so and offers the next times.
+    assert quote["pickup_ok"] is False
+    assert quote["pickup_problem"].startswith("The shop is closed at")
+    day3 = (now_sg() + timedelta(days=3)).strftime("%Y-%m-%d")  # opens 8am the next morning
+    assert quote["next_available_pickups"] == [f"{day3}T08:00", f"{day3}T08:30", f"{day3}T09:00"]
+
+
+async def test_place_with_an_invalid_time_gives_the_reason_and_next_times(app, shop):
+    async with connect(app) as client:
+        closed = await client.call_tool("place_pickup_order",
+                                        order_args(pickup_time=in_two_days(hour=22)))
+        soon = await client.call_tool("place_pickup_order", order_args(
+            pickup_time=(now_sg() + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M")))
+    assert closed.is_error and "The shop is closed at" in text(closed)
+    assert "Next available pickup times (Singapore): " in text(closed)
+    assert text(closed).count("T") >= 3  # three ISO times
+    assert soon.is_error and "needs 24 hours' notice" in text(soon)
+    assert app.state.store.list_orders(shop.id) == []
+
+
+async def test_full_day_is_refused(app, shop):
+    store = app.state.store
+    store.save_shop(store.get_shop(shop.id).model_copy(update={"daily_capacity": 1}))
+    async with connect(app) as client:
+        first = await client.call_tool("place_pickup_order", order_args())
+        second = await client.call_tool("place_pickup_order", order_args())
+    assert not first.is_error
+    assert second.is_error and "fully booked" in text(second)
+
+
+async def test_same_idempotency_key_returns_the_same_order(app, shop):
+    async with connect(app) as client:
+        first = (await client.call_tool("place_pickup_order", order_args(
+            idempotency_key="abc-123"))).structured_content
+        again = (await client.call_tool("place_pickup_order", order_args(
+            idempotency_key="abc-123"))).structured_content
+        other = (await client.call_tool("place_pickup_order", order_args(
+            idempotency_key="abc-124"))).structured_content
+    assert again["order_id"] == first["order_id"] and again["duplicate"] is True
+    assert "duplicate" not in first and other["order_id"] != first["order_id"]
+    assert len(app.state.store.list_orders(shop.id)) == 2
+
+
+async def test_failed_order_frees_its_idempotency_key(app, shop):
+    async with connect(app) as client:
+        bad = await client.call_tool("place_pickup_order", order_args(
+            idempotency_key="k1", customer_name=" "))
+        good = await client.call_tool("place_pickup_order", order_args(idempotency_key="k1"))
+    assert bad.is_error and not good.is_error
+
+
+async def test_paused_shop_says_so_everywhere(app, shop):
+    store = app.state.store
+    until = (now_sg() + timedelta(days=5)).date()
+    store.save_shop(store.get_shop(shop.id).model_copy(update={"paused_until": until}))
+    async with connect(app) as client:
+        info = (await client.call_tool("get_shop", {"shop_slug": "mak-kuih"})).structured_content
+        menu = (await client.call_tool("get_menu", {"shop_slug": "mak-kuih"})).structured_content
+        placed = await client.call_tool("place_pickup_order", order_args())
+    expected = f"Mak's Kuih: Not taking orders until {until:%a} {until.day} {until:%b %Y}."
+    assert info["ordering_paused_message"] == expected == menu["ordering_paused_message"]
+    assert info["next_available_pickups"] == []
+    assert placed.is_error and "is not taking orders until" in text(placed)
 
 
 async def test_normal_order_is_confirmed_and_audited(app, shop):
@@ -213,12 +275,12 @@ async def test_order_can_carry_a_customer_email(app, shop):
      "Some items aren't on the shop's menu, so the owner needs to price them."),
     ({"items": [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 121}]},
      "above this shop's usual maximum", "This is a bigger quantity than the shop usually makes."),
-    ({"pickup_time": in_two_days(hour=22)}, "outside opening hours",
-     "The shop is closed at your pickup time."),
+    ({"items": [{"name": "Kuih Lapis", "variant": "40 pcs", "qty": 10}]},
+     "auto-approve limit", "Orders over S$150.00 need the owner's OK."),
     ({"items": [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 1,
                  "request": "Write Happy Birthday on the box"}]}, "Custom request for Kuih Lapis",
      "Your order has a custom request that the owner needs to confirm."),
-], ids=["unknown-item", "qty-above-threshold", "outside-hours", "custom-request"])
+], ids=["unknown-item", "qty-above-threshold", "over-limit", "custom-request"])
 async def test_unusual_order_is_pending_owner_approval(app, shop, change, reason, plain):
     async with connect(app) as client:
         placed = (await client.call_tool("place_pickup_order",
@@ -266,7 +328,7 @@ async def test_owner_decision_seen_through_get_order_status(app, shop):
         held = (await client.call_tool("place_pickup_order", order_args(
             customer_phone="12345"))).structured_content
         other = (await client.call_tool("place_pickup_order", order_args(
-            pickup_time=in_two_days(hour=22)))).structured_content
+            items=[{"name": "Kuih Lapis", "variant": "40 pcs", "qty": 10}]))).structured_content
         approval.reject(app.state.store, shop.id, held["order_id"], "Can't verify this number")
         approval.approve(app.state.store, shop.id, other["order_id"])
         rejected = (await client.call_tool("get_order_status", {

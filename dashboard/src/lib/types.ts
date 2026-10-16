@@ -17,7 +17,22 @@ export interface Shop {
   auto_approve_limit: Money
   owner_email: string
   email_verified: boolean
+  approval_timeout_hours: number
+  cancel_cutoff_hours: number
+  min_notice_hours: number
+  /** Max orders per pickup day; null = no limit. */
+  daily_capacity: number | null
+  /** "2026-10-26": no new orders until that day. */
+  paused_until: string | null
   created_at: string
+}
+
+/** One row of the weekly hours table (day 0 = Monday, times "HH:MM"). */
+export interface DayHours {
+  day: number
+  closed: boolean
+  open: string
+  close: string
 }
 
 export interface Variant {
@@ -62,6 +77,9 @@ export interface ShopDetail {
   products: Product[]
   links: ShopLinks
   checks: MenuChecks
+  /** The hours as a weekly table (9am-6pm daily when the hours text can't be read). */
+  opening_hours?: DayHours[]
+  hours_readable?: boolean
 }
 
 /** Going live: owner_key is only set the first time, and is shown to the owner once. */
@@ -164,6 +182,18 @@ export interface AuditPage {
 export type PublicShop = Pick<Shop, 'slug' | 'name' | 'tagline' | 'shop_type' | 'address' | 'hours' | 'phone' | 'currency'> & {
   /** Only the sample shop: it shows an "Example shop" label. */
   example?: boolean
+  min_notice_hours?: number
+  paused_until?: string | null
+  /** "Not taking orders until ..." while paused, else "". */
+  ordering_message?: string
+}
+
+/** Pickup times the shop page offers (computed by the server, Singapore time). */
+export interface PickupSlots {
+  days: { date: string; label: string; times: { value: string; label: string }[] }[]
+  /** Why there are no days ("" when there are some). */
+  message: string
+  min_notice_hours: number
 }
 
 export interface PublicShopPage {

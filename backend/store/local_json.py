@@ -121,6 +121,15 @@ class LocalJsonStore(Store):
                 self._write(collection, rows)
         return row
 
+    def claim(self, collection: str, key_hash: str, data: dict) -> dict | None:
+        with self._lock:
+            rows = self._read(collection)
+            if key_hash in rows:
+                return rows[key_hash]
+            rows[key_hash] = data
+            self._write(collection, rows)
+        return None
+
     # --- products -------------------------------------------------------
 
     def get_product(self, product_id: str) -> Product | None:

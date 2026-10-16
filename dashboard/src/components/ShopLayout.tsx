@@ -15,6 +15,7 @@ const tabs = [
   { to: '', label: 'Menu', end: true },
   { to: 'orders', label: 'Orders' },
   { to: 'audit', label: 'Audit log' },
+  { to: 'settings', label: 'Settings' },
   { to: 'live', label: 'Go live' },
 ]
 
@@ -90,7 +91,7 @@ function ShopFrame() {
           {shop.published && shop.owner_email && !shop.email_verified && <ConfirmEmailBanner shop={shop} />}
           {shop.published && !onLiveTab && loaded.data && <ShareCard shop={shop} links={loaded.data.links} />}
           <nav aria-label="Shop sections">
-            <ul className="grid grid-cols-4 gap-1.5 sm:flex sm:gap-2">
+            <ul className="grid grid-cols-5 gap-1 sm:flex sm:gap-2">
               {tabs.map((t) => (
                 <li key={t.label}>
                   <NavLink

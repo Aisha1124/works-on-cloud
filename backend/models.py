@@ -3,7 +3,7 @@
 Money is always Decimal. In JSON it is a string (e.g. "12.50"), never a float.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -74,6 +74,13 @@ class Shop(BaseModel):
     approval_timeout_hours: int = Field(default=24, ge=1, le=168)
     # Customers can cancel from their status page until this many hours before pickup.
     cancel_cutoff_hours: int = Field(default=12, ge=0, le=168)
+    # Pickup must be at least this many hours after ordering (Singapore time).
+    min_notice_hours: int = Field(default=24, ge=0, le=336)
+    # At most this many orders per pickup day (None = no limit). Rejected and cancelled
+    # orders don't count.
+    daily_capacity: int | None = Field(default=None, ge=1, le=1000)
+    # No new orders until this date (Singapore). The pause ends by itself on that day.
+    paused_until: date | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 
