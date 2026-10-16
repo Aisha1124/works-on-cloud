@@ -218,6 +218,10 @@ export function PublicShop() {
         Shop page made with <span className="font-semibold text-ink">KampungCart</span> ·{' '}
         <Link to="/" className="focus-ring inline-flex items-center gap-1 font-semibold text-ink underline underline-offset-4">
           Make one for your shop <ArrowRight aria-hidden className="size-4" />
+        </Link>{' '}
+        ·{' '}
+        <Link to="/privacy" className="focus-ring font-semibold text-ink underline underline-offset-4">
+          Privacy
         </Link>
       </footer>
     </main>

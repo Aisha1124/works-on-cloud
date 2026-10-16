@@ -10,6 +10,7 @@ import { Onboarding } from './pages/Onboarding'
 import { OrderStatus } from './pages/OrderStatus'
 import { Orders } from './pages/Orders'
 import { PublicShop } from './pages/PublicShop'
+import { Privacy } from './pages/Privacy'
 import { Settings } from './pages/Settings'
 import { Styleguide } from './pages/Styleguide'
 
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
   },
   { path: '/s/:slug', element: <PublicShop /> },
   { path: '/o/:id', element: <OrderStatus /> },
+  { path: '/privacy', element: <Privacy /> },
   { path: '/styleguide', element: <Styleguide /> },
   { path: '*', element: <NotFound /> },
 ])

@@ -45,7 +45,10 @@ export function OrderStatus() {
         />
       )}
       <footer className="border-t-2 border-dashed border-ink pt-4 text-center text-sm text-ink-soft">
-        Orders by <span className="font-semibold text-ink">KampungCart</span> · pay the shop at pickup
+        Orders by <span className="font-semibold text-ink">KampungCart</span> · pay the shop at pickup ·{' '}
+        <Link to="/privacy" className="focus-ring font-semibold text-ink underline underline-offset-4">
+          Privacy
+        </Link>
       </footer>
     </main>
   )

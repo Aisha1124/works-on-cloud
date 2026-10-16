@@ -273,7 +273,7 @@ export function Checkout({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           error={errors.phone}
-          hint="Only the shop owner sees this."
+          hint="Your name and phone are only shared with this shop for your pickup."
         />
         <Input
           label="Email for order updates (optional)"

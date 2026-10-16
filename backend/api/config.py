@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     owner_key: SecretStr | None = None
     # Optional: the sample shop's owner email, so its order emails reach someone.
     sample_owner_email: str = ""
+    # Who runs this KampungCart: gets "report this shop" messages and deletion requests, and is
+    # shown on the /privacy page.
+    admin_email: str = ""
 
     # Email. "smtp" (Gmail with an app password) or "resend". Without the provider's
     # credentials, emails are not sent, only logged (subject + masked recipient).

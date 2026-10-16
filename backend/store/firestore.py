@@ -80,6 +80,9 @@ class FirestoreStore(Store):
     def save_checkout(self, checkout: CheckoutSession) -> CheckoutSession:
         raise NotImplementedError(_MSG)
 
+    def list_checkouts(self, shop_id: str) -> list[CheckoutSession]:
+        raise NotImplementedError(_MSG)
+
     def add_audit_event(self, event: AuditEvent) -> AuditEvent:
         raise NotImplementedError(_MSG)
 

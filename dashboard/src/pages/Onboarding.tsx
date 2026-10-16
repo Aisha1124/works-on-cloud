@@ -213,6 +213,12 @@ export function Onboarding() {
         )}
       </section>
 
+      <footer className="border-t-2 border-dashed border-ink pt-4 text-center text-sm text-ink-soft">
+        <Link to="/privacy" className="focus-ring font-semibold text-ink underline underline-offset-4">
+          Privacy
+        </Link>
+      </footer>
+
       {read && <GoLiveBar shopId={result.shop.id} shopName={result.shop.name} count={result.products.length} />}
     </main>
   )

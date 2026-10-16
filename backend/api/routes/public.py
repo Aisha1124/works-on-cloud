@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from agents.approval import service as approval
 from agents.commerce import pickup
 from agents.commerce import service as commerce
-from backend import ai_readable, mailer, notify
+from backend import ai_readable, mailer, notify, privacy
 from backend.api.config import Settings
 from backend.api.deps import caller
 from backend.api.routes.shops import ShopLinks, shop_links
@@ -84,6 +84,19 @@ def get_public_shop(request: Request, slug: str) -> PublicShopPage:
     if page is None:
         raise HTTPException(status_code=404, detail="This shop isn't open on KampungCart.")
     return page
+
+
+class SiteInfo(BaseModel):
+    """For the /privacy page."""
+
+    admin_email: str  # "" when not set
+    retention_days: int
+
+
+@router.get("/api/public/site", response_model=SiteInfo)
+def site_info(request: Request) -> SiteInfo:
+    return SiteInfo(admin_email=request.app.state.settings.admin_email.strip(),
+                    retention_days=privacy.RETENTION_DAYS)
 
 
 class SlotTime(BaseModel):

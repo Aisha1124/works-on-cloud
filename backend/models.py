@@ -159,6 +159,8 @@ class Order(BaseModel):
     # Secret part of the customer's status link /o/{id}?t={token}. Never sent to agents
     # except in the status link itself.
     status_token: str = ""
+    # Name, phone, email and note were erased (privacy: 90 days after pickup).
+    personal_data_erased: bool = False
     unpriced_requests: list[UnpricedRequest] = Field(default_factory=list)
     review_reasons: list[str] = Field(default_factory=list)  # why the owner must look at it
     review_codes: list[str] = Field(default_factory=list)  # commerce.HOLD_SENTENCES keys

@@ -196,6 +196,9 @@ class LocalJsonStore(Store):
     def save_checkout(self, checkout: CheckoutSession) -> CheckoutSession:
         return self._put("checkouts", checkout.id, checkout)
 
+    def list_checkouts(self, shop_id: str) -> list[CheckoutSession]:
+        return [c for c in self._all("checkouts", CheckoutSession) if c.shop_id == shop_id]
+
     # --- audit ----------------------------------------------------------
 
     def add_audit_event(self, event: AuditEvent) -> AuditEvent:

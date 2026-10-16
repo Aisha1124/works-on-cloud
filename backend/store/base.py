@@ -97,6 +97,10 @@ class Store(ABC):
     @abstractmethod
     def save_checkout(self, checkout: CheckoutSession) -> CheckoutSession: ...
 
+    @abstractmethod
+    def list_checkouts(self, shop_id: str) -> list[CheckoutSession]:
+        """This shop's UCP checkout sessions, any order."""
+
     # Audit
     @abstractmethod
     def add_audit_event(self, event: AuditEvent) -> AuditEvent: ...

@@ -24,6 +24,7 @@ describe('customer shop page', () => {
     const link = await screen.findByRole('link', { name: /Make one for your shop/ })
     expect(link.getAttribute('href')).toBe('/')
     expect(link.closest('footer')?.textContent).toMatch(/Shop page made with KampungCart/)
+    expect(screen.getByRole('link', { name: 'Privacy' }).getAttribute('href')).toBe('/privacy')
     fireEvent.click(link)
     expect((await screen.findByTestId('landed')).dataset.path).toBe('/')
   })

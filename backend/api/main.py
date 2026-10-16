@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from agents.commerce import service as commerce
+from backend import privacy
 from backend.api.config import Settings, get_settings
 from backend.api.deps import AUTH_FAIL_LIMIT, AUTH_FAIL_WINDOW_S
 from backend.api.routes import health, orders, owner, products, public, shops
@@ -25,9 +26,11 @@ SWEEP_EVERY_S = 300
 
 
 def sweep_once(store, settings) -> None:
-    """Housekeeping over every shop: expire held orders past their approval timeout."""
+    """Housekeeping over every shop: expire held orders past their approval timeout, and erase
+    customer details 90 days after pickup (backend/privacy.py)."""
     for shop in store.list_shops():
         commerce.expire_due(store, settings, shop)
+        privacy.erase_old_personal_data(store, shop)
 
 
 async def sweep_forever(store, settings) -> None:
