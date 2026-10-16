@@ -29,8 +29,9 @@ COPY backend/ backend/
 COPY scripts/seed_shop.py scripts/seed_shop.py
 COPY --from=dashboard /dashboard/dist dashboard/dist
 
-# LocalJsonStore writes to /app/data and images go to /app/uploads. On Cloud Run this is the
-# in-memory filesystem: it is wiped on every restart, so the sample shop is seeded at startup.
+# With STORE_BACKEND=firestore (production) all data lives in Firestore and survives restarts
+# and redeploys. With STORE_BACKEND=local, data goes to /app/data, which on Cloud Run is the
+# in-memory filesystem and is wiped on every restart.
 RUN useradd --create-home --uid 1000 app \
     && mkdir -p data uploads \
     && chown -R app:app data uploads
@@ -40,4 +41,5 @@ USER app
 ENV PORT=8080 \
     FORWARDED_ALLOW_IPS="*"
 EXPOSE 8080
-CMD ["sh", "-c", "if [ \"${STORE_BACKEND:-local}\" = local ]; then python scripts/seed_shop.py; fi && exec uvicorn backend.api.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers"]
+# The sample shop is created only if it doesn't exist yet, so a redeploy never overwrites it.
+CMD ["sh", "-c", "python scripts/seed_shop.py && exec uvicorn backend.api.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers"]

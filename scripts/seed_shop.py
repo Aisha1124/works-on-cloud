@@ -1,5 +1,7 @@
-"""Create (or refresh) the published sample shop that external agents order from.
-The container runs this at startup while STORE_BACKEND=local (see Dockerfile).
+"""Create the published sample shop that external agents order from, only if it doesn't exist.
+The container runs this at every startup (see Dockerfile); an existing shop, its menu and its
+orders are never overwritten, so a redeploy never wipes data. Only its owner key follows
+OWNER_KEY.
 
 Fixed ids, so scripts/try_mcp.py and the UCP request files in scripts/ucp/ can refer to them:
   shop slug  mak-kuih
@@ -35,6 +37,16 @@ SLUG = "mak-kuih"
 def main() -> None:
     settings = get_settings()
     store = get_store(settings)
+    key = settings.owner_key.get_secret_value().strip() if settings.owner_key else ""
+    existing = store.get_shop(SHOP_ID)
+    if existing is not None:
+        # Never overwrite: the owner may have edited the menu or settings, and orders point
+        # at these products. Only the owner key follows OWNER_KEY (so it can be rotated).
+        if key:
+            store.set_owner_key_hash(existing.id, hash_owner_key(key))
+        print(f"Sample shop '{existing.name}' already exists; left as it is."
+              + (" Owner key: OWNER_KEY." if key else ""))
+        return
     shop = store.save_shop(Shop(
         id=SHOP_ID, slug=SLUG, name="Mak's Kuih", tagline="Nyonya kuih, made fresh",
         shop_type="Home baker", address="Tampines, Singapore",
@@ -51,7 +63,6 @@ def main() -> None:
         id="ondeh-ondeh", shop_id=shop.id, name="Ondeh Ondeh", category="Kuih",
         base_price=Decimal("12.50"), unit="10 pcs",
         options=[ProductOption(name="Flavour", choices=["Pandan", "Gula Melaka"])]))
-    key = settings.owner_key.get_secret_value().strip() if settings.owner_key else ""
     if key:
         store.set_owner_key_hash(shop.id, hash_owner_key(key))
     print(f"Published shop '{shop.name}' (slug {SLUG}, id {SHOP_ID}) with 2 products. "
