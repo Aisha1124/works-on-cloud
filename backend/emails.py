@@ -209,6 +209,27 @@ def customer_email(shop: Shop, order: Order, kind: str, status_url: str) -> Emai
                  tags={"kind": f"customer_{kind}"})
 
 
+def report_email(to: str, shop: Shop, shop_url: str, reason: str, details: str,
+                 reporter_email: str) -> Email:
+    """A "report this shop" message for the person who runs this KampungCart. Everything from
+    the reporter is untrusted text: escaped, never followed."""
+    subject = f"Shop reported: {_one_line(shop.name)} ({reason})"
+    reply = reporter_email or "not given"
+    text = "\n".join([f"Someone reported {shop.name} ({shop_url}).", "", f"Reason: {reason}",
+                      f"Details: {details or '(none)'}", f"Reporter's email: {reply}", "",
+                      f"Shop id: {shop.id}, owner email: {shop.owner_email or '(none)'}"])
+    body = (f"<p>Someone reported <b>{_e(shop.name)}</b> "
+            f'(<a href="{_e(shop_url)}">{_e(shop_url)}</a>).</p>'
+            f"<p><b>Reason:</b> {_e(reason)}</p>"
+            f'<p><b>Details:</b></p><p style="white-space:pre-wrap;border-left:4px solid {INK};'
+            f'padding-left:10px">{_e(details) or "(none)"}</p>'
+            f"<p><b>Reporter's email:</b> {_e(reply)}</p>"
+            f'<p style="font-size:13px;color:#5C544A">Shop id {_e(shop.id)} · owner email '
+            f"{_e(shop.owner_email or '(none)')}</p>")
+    return Email(to=to, subject=subject, text=text, html=_page("A shop was reported", body),
+                 tags={"kind": "shop_report"})
+
+
 def owner_cancelled_email(shop: Shop, order: Order, orders_url: str) -> Email:
     first = _one_line(order.customer_name.split()[0] if order.customer_name.split() else "A customer", 40)
     pickup = f"{to_sg(order.pickup_at):%a %d %b, %H:%M}"

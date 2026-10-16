@@ -86,6 +86,22 @@ describe('customer shop page', () => {
     expect(screen.getByText("This shop needs 24 hours' notice. Only open times are shown.")).toBeTruthy()
   })
 
+  it('lets anyone report the shop', async () => {
+    const calls = stubApi((url, init) => {
+      if (url === '/api/public/shops/mak-kuih') return { body: PAGE }
+      if (url === '/api/public/shops/mak-kuih/report' && init?.method === 'POST') return { body: { message: "Thank you. We'll look into it." } }
+      return undefined
+    })
+    renderAt('/s/mak-kuih', routes)
+    fireEvent.click(await screen.findByRole('button', { name: 'Report this shop' }))
+    fireEvent.change(screen.getByLabelText("What's wrong?"), { target: { value: 'not_real' } })
+    fireEvent.change(screen.getByLabelText('Details (optional)'), { target: { value: 'No such shop' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send report' }))
+    expect(await screen.findByText("Thank you. We'll look into it.")).toBeTruthy()
+    const sent = calls.find((c) => c.url.endsWith('/report'))!
+    expect(JSON.parse(String(sent.init!.body))).toEqual({ reason: 'not_real', details: 'No such shop', email: '' })
+  })
+
   it('still links home when the shop is not found', async () => {
     stubApi(() => undefined)
     renderAt('/s/nope', routes)

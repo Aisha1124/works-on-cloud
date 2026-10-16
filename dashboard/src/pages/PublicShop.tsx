@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ErrorCard } from '../components/ErrorCard'
 import { MenuLines } from '../components/MenuLines'
+import { ReportShop } from '../components/ReportShop'
 import { AddToOrder, Checkout, OrderResult } from '../components/ShopOrder'
 import { api } from '../lib/api'
 import { addLine, useCartQuote } from '../lib/cart'
@@ -223,6 +224,11 @@ export function PublicShop() {
         <Link to="/privacy" className="focus-ring font-semibold text-ink underline underline-offset-4">
           Privacy
         </Link>
+        {shop && (
+          <div className="mt-3">
+            <ReportShop slug={shop.slug} shopName={shop.name} />
+          </div>
+        )}
       </footer>
     </main>
   )

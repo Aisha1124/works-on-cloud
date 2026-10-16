@@ -15,6 +15,9 @@ from backend.api.routes.owner import LINK_EMAIL_LIMIT, LINK_IP_LIMIT, LINK_WINDO
 from backend.api.routes.shops import (
     DRAFT_LIMIT, DRAFT_WINDOW_S, VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S,
 )
+from backend.api.routes.public import (
+    REPORT_IP_LIMIT, REPORT_IP_WINDOW_S, REPORT_SHOP_LIMIT, REPORT_SHOP_WINDOW_S,
+)
 from backend.api.spa import spa_router
 from backend.external import ORDER_LIMIT, ORDER_WINDOW_S, StoreRateLimiter
 from backend.mcp_server import create_mcp_server, mcp_route
@@ -73,6 +76,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.link_ip_limiter = limiter("link_ip", LINK_IP_LIMIT, LINK_WINDOW_S)  # per client
     app.state.link_email_limiter = limiter("link_email", LINK_EMAIL_LIMIT, LINK_WINDOW_S)
     app.state.verify_limiter = limiter("verify", VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S)
+    app.state.report_ip_limiter = limiter("report_ip", REPORT_IP_LIMIT, REPORT_IP_WINDOW_S)
+    app.state.report_shop_limiter = limiter("report_shop", REPORT_SHOP_LIMIT,
+                                            REPORT_SHOP_WINDOW_S)
 
     app.include_router(health.router)
     app.include_router(owner.router)

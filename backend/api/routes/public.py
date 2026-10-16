@@ -7,7 +7,7 @@ import json
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -16,12 +16,13 @@ from pydantic import BaseModel, Field
 from agents.approval import service as approval
 from agents.commerce import pickup
 from agents.commerce import service as commerce
-from backend import ai_readable, mailer, notify, privacy
+from backend import ai_readable, emails, mailer, notify, owner_session, privacy
+from backend.audit import log_event
 from backend.api.config import Settings
 from backend.api.deps import caller
 from backend.api.routes.shops import ShopLinks, shop_links
 from backend.external import (
-    MAX_ID_LEN, RATE_LIMIT_MESSAGE, ShopNotFound, published_shop, published_shops,
+    MAX_ID_LEN, PLATFORM, RATE_LIMIT_MESSAGE, ShopNotFound, published_shop, published_shops,
 )
 from backend.models import Actor, Channel, Order, OrderStatus, Product, Shop
 from backend.timeutil import to_sg
@@ -84,6 +85,65 @@ def get_public_shop(request: Request, slug: str) -> PublicShopPage:
     if page is None:
         raise HTTPException(status_code=404, detail="This shop isn't open on KampungCart.")
     return page
+
+
+# --- Report this shop ---------------------------------------------------------------------
+
+REPORT_REASONS = {
+    "wrong_info": "Wrong prices or menu",
+    "order_problem": "Problem with an order",
+    "not_real": "Not a real shop, or a scam",
+    "unsafe": "Unsafe or illegal items",
+    "other": "Something else",
+}
+REPORT_IP_LIMIT, REPORT_IP_WINDOW_S = 3, 3600.0  # per client per hour
+REPORT_SHOP_LIMIT, REPORT_SHOP_WINDOW_S = 20, 86400.0  # per shop per day
+REPORT_THANKS = "Thank you. We'll look into it."
+
+
+class ReportIn(BaseModel):
+    reason: Literal["wrong_info", "order_problem", "not_real", "unsafe", "other"]
+    details: str = Field(default="", max_length=1000)
+    email: str = Field(default="", max_length=254)
+
+
+@router.post("/api/public/shops/{slug}/report")
+def report_shop(request: Request, background: BackgroundTasks, slug: str,
+                body: ReportIn) -> dict:
+    """Anyone can report a shop. Emailed to ADMIN_EMAIL and logged in the platform audit log
+    (not the shop's, so the owner never sees who reported them). Limited per client and per
+    shop."""
+    store, settings = request.app.state.store, request.app.state.settings
+    try:
+        shop = published_shop(store, slug)
+    except ShopNotFound:
+        raise HTTPException(status_code=404, detail="This shop isn't open on KampungCart.") from None
+    email = ""
+    if body.email.strip():
+        email = owner_session.normalize_email(body.email) or ""
+        if not email:
+            raise HTTPException(status_code=400, detail=(
+                "That doesn't look like an email address. Leave it empty if you prefer."))
+    state = request.app.state
+    if not state.report_ip_limiter.allow(caller(request)) or not (
+            state.report_shop_limiter.allow(shop.id)):
+        raise HTTPException(status_code=429, detail=(
+            "We've received a few reports from you already. Please try again later."))
+    reason = REPORT_REASONS[body.reason]
+    details = body.details.strip()
+    sent_to = settings.admin_email.strip()
+    if sent_to:
+        background.add_task(mailer.send_safely, settings, emails.report_email(
+            sent_to, shop, shop_links(settings, shop).public_page, reason, details, email))
+    log_event(
+        store, shop_id=PLATFORM, actor=Actor.customer, action="shop_reported",
+        entity_type="shop", entity_id=shop.id,
+        summary=f"Shop {shop.slug} reported: {reason}",
+        details={"shop_id": shop.id, "slug": shop.slug, "reason": body.reason,
+                 "details": details[:300], "reporter_email": mailer.mask_email(email) if email else "",
+                 "emailed_admin": bool(sent_to)},
+    )
+    return {"message": REPORT_THANKS}
 
 
 class SiteInfo(BaseModel):
