@@ -1,0 +1,124 @@
+# Every push to main: run CI, build the image, roll out a new Cloud Run revision, smoke test it,
+# and roll back to the previous revision automatically if the smoke test fails.
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables), from
+# `terraform output` in infra/terraform:
+#   GCP_PROJECT_ID, GCP_REGION, WIF_PROVIDER, DEPLOYER_SA
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "infra/**"
+      - "docs/**"
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never two deploys at once; never cancel one halfway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  SERVICE: kampungcart
+  REGION: ${{ vars.GCP_REGION }}
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/kampungcart/app
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Workload Identity Federation
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+          token_format: access_token
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:main
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Remember the revision serving now (rollback target)
+        id: before
+        run: |
+          prev=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(status.traffic[0].revisionName)')
+          echo "revision=$prev" >> "$GITHUB_OUTPUT"
+          echo "Currently serving: $prev"
+
+      - name: Deploy new revision
+        # Only the image changes. Env vars, secrets, scaling and probes are owned by Terraform.
+        run: |
+          gcloud run deploy "$SERVICE" --region "$REGION" --quiet \
+            --image "${IMAGE}@${{ steps.build.outputs.digest }}" \
+            --revision-suffix "${GITHUB_SHA::7}-${GITHUB_RUN_ATTEMPT}"
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet
+
+      - name: Smoke test
+        id: smoke
+        run: |
+          url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
+          echo "Testing $url"
+          for i in $(seq 1 10); do
+            curl -fsS "$url/api/health" | grep -q '"ok":true' && break
+            [ "$i" = 10 ] && { echo "health check failed"; exit 1; }
+            sleep 3
+          done
+          curl -fsS "$url/.well-known/ucp" | grep -q "$url/ucp/v1" \
+            || { echo "UCP profile does not advertise $url"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/shops")
+          [ "$code" = 401 ] || { echo "owner routes not protected (got $code)"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url/")
+          [ "$code" = 200 ] || { echo "dashboard not served (got $code)"; exit 1; }
+          echo "Smoke test passed"
+
+      - name: Roll back
+        if: failure() && steps.before.outputs.revision != ''
+        run: |
+          echo "::error::Deploy failed, routing traffic back to ${{ steps.before.outputs.revision }}"
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --quiet \
+            --to-revisions "${{ steps.before.outputs.revision }}=100"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy ${{ job.status }}"
+            echo "- Image: \`${IMAGE}@${{ steps.build.outputs.digest }}\`"
+            echo "- Previous revision: \`${{ steps.before.outputs.revision }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
