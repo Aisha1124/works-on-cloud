@@ -10,7 +10,7 @@ import pytest
 from agents.approval import service as approval
 from agents.commerce import service as commerce
 from agents.commerce.service import OrderValidationError
-from backend.models import Actor, OrderStatus, RiskLevel
+from backend.models import Actor, OrderStatus, Risk, RiskLevel, Shop
 from tests.conftest import GOOD_PHONE, NOW, SATURDAY_10AM
 from tests.gemini_fake import fake_client
 
@@ -299,3 +299,25 @@ def test_orders_from_other_shops_are_not_found(store, demo, gemini_settings):
         commerce.get_order_status(store, "other-shop", order.id)
     with pytest.raises(approval.OrderNotFound):
         approval.reject(store, demo.shop.id, "missing")
+
+
+def test_review_reasons_hold_a_low_risk_order(store, demo, gemini_settings):
+    order = place(store, demo, gemini_settings,
+                  [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 1},
+                   {"name": "Durian Puff", "qty": 2}])
+    assert order.total == Decimal("16.00")
+    assert order.status == OrderStatus.pending_approval
+    assert [u.name for u in order.unpriced_requests] == ["Durian Puff"]
+    assert order.review_reasons == ["2 x 'Durian Puff' is not on the menu; the owner will price it"]
+    held = store.list_audit_events(demo.shop.id)[0]
+    assert held.action == "order_held" and "needs owner review" in held.summary
+    # The owner can still approve it as usual.
+    assert approval.approve(store, demo.shop.id, order.id).status == OrderStatus.approved
+
+
+def test_decide_holds_on_review_reasons():
+    shop = Shop(slug="s", name="S")
+    low = Risk(score=0, level=RiskLevel.low)
+    assert approval.decide(shop, low, Decimal("10"))[0] == OrderStatus.auto_approved
+    status, why = approval.decide(shop, low, Decimal("10"), ["custom request"])
+    assert status == OrderStatus.pending_approval and why == "needs owner review: custom request"

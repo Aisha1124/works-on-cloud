@@ -82,6 +82,15 @@ export interface OrderItem {
   qty: number
   unit_price: Money
   line_total: Money
+  /** Buyer's custom request for this line (untrusted text). */
+  request?: string
+}
+
+/** A line the buyer asked for that is not on the menu: no price until the owner sets one. */
+export interface UnpricedRequest {
+  name: string
+  qty: number
+  request: string
 }
 
 export interface Risk {
@@ -105,6 +114,9 @@ export interface Order {
   risk: Risk | null
   status: OrderStatus
   rejection_reason: string
+  unpriced_requests?: UnpricedRequest[]
+  /** Why the owner must approve it (off-menu items, custom requests, limits, hours). */
+  review_reasons?: string[]
   created_at: string
 }
 

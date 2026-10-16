@@ -3,6 +3,7 @@
 Buyer-side agents see the result through commerce.get_order_status.
 """
 
+from collections.abc import Sequence
 from decimal import Decimal
 
 from backend.audit import log_event
@@ -21,8 +22,12 @@ class InvalidTransition(ValueError):
     """The order is not waiting for approval. str(exc) is safe to show."""
 
 
-def decide(shop: Shop, risk: Risk, total: Decimal) -> tuple[OrderStatus, str]:
-    """-> (status, why). Only low-risk orders within the shop's limit go through by themselves."""
+def decide(shop: Shop, risk: Risk, total: Decimal,
+           review_reasons: Sequence[str] = ()) -> tuple[OrderStatus, str]:
+    """-> (status, why). Only low-risk orders within the shop's limit, with nothing the owner
+    must review (commerce.owner_review_reasons), go through by themselves."""
+    if review_reasons:
+        return OrderStatus.pending_approval, "needs owner review: " + "; ".join(review_reasons)
     if total > shop.auto_approve_limit:
         return (OrderStatus.pending_approval,
                 f"total S${total:.2f} is above the S${shop.auto_approve_limit:.2f} "

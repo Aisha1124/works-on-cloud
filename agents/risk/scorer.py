@@ -42,6 +42,7 @@ FIRST_ORDER = 10
 BURST = 30
 SUSPICIOUS_NOTE = 35
 PRICE_MISMATCH = 50
+NOT_ON_MENU = 20
 
 RUSH_HOURS = 12
 BURST_WINDOW = timedelta(minutes=10)
@@ -87,6 +88,13 @@ def pack_size(label: str) -> int:
 def largest_pack(product: Product) -> int:
     labels = [v.label for v in product.variants] or [product.unit]
     return max(pack_size(label) for label in labels)
+
+
+def unusual_qty(product: Product, qty: int) -> int | None:
+    """The product's largest pack when `qty` is more than 3x it (unusual for a small shop),
+    else None. Used by the risk score and by the owner-review check."""
+    biggest = largest_pack(product)
+    return biggest if qty > 3 * biggest else None
 
 
 # --- Opening hours ------------------------------------------------------------------
@@ -235,6 +243,7 @@ class OrderFacts:
     price_mismatch: bool
     previous_orders: list[Order]  # this shop's earlier orders
     now: datetime
+    unpriced: int = 0  # lines not on the menu (no price yet)
 
 
 def score_rules(f: OrderFacts) -> Risk:
@@ -246,8 +255,8 @@ def score_rules(f: OrderFacts) -> Risk:
         hits.append((TOTAL_OVER_150, f"Order total S${f.total:.2f} is over S$150"))
 
     for product, qty in f.lines:
-        biggest = largest_pack(product)
-        if qty > 3 * biggest:
+        biggest = unusual_qty(product, qty)
+        if biggest is not None:
             hits.append((BIG_QTY, f"Unusual quantity: {qty} x {product.name} "
                                   f"(more than 3x the largest pack of {biggest})"))
             break
@@ -287,6 +296,10 @@ def score_rules(f: OrderFacts) -> Risk:
     if f.price_mismatch:
         hits.append((PRICE_MISMATCH, "Buyer sent prices that differ from the menu "
                                      "(menu prices were used)"))
+
+    if f.unpriced:
+        hits.append((NOT_ON_MENU, f"{f.unpriced} item(s) not on the menu; the owner must "
+                                  "price them"))
 
     score = min(100, sum(points for points, _ in hits))
     return Risk(score=score, level=level_for(score), reasons=[r for _, r in hits])

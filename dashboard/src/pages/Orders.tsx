@@ -118,13 +118,36 @@ function OrderCard({
                     <span className="font-mono">{it.qty} ×</span> {it.name}
                   </>
                 }
-                hint={[it.variant, ...Object.entries(it.options).map(([k, v]) => `${k}: ${v}`)].filter(Boolean).join(' · ') || undefined}
+                hint={[it.variant, ...Object.entries(it.options).map(([k, v]) => `${k}: ${v}`), it.request && `Request: “${it.request}”`].filter(Boolean).join(' · ') || undefined}
                 value={<PriceTag value={it.line_total} />}
               />
             </li>
           ))}
+          {order.unpriced_requests?.map((u, i) => (
+            <li key={`unpriced-${i}`}>
+              <ReceiptRow
+                label={
+                  <>
+                    <span className="font-mono">{u.qty} ×</span> {u.name}
+                  </>
+                }
+                hint={['Not on the menu', u.request && `Request: “${u.request}”`].filter(Boolean).join(' · ')}
+                value={<span className="font-semibold text-chili">PRICE TBC</span>}
+              />
+            </li>
+          ))}
         </ul>
-        <ReceiptTotal value={formatSGD(order.total)} />
+        <ReceiptTotal label={order.unpriced_requests?.length ? 'TOTAL (menu items)' : undefined} value={formatSGD(order.total)} />
+        {order.review_reasons && order.review_reasons.length > 0 && (
+          <div className="mt-3 border-2 border-ink bg-turmeric-tint p-3 text-sm">
+            <p className="font-mono text-xs tracking-widest uppercase">Needs your check</p>
+            <ul className="list-[square] pl-5">
+              {order.review_reasons.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {order.note && (
           <div className="mt-3 border-l-4 border-ink pl-3 text-sm">

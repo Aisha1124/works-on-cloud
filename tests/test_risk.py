@@ -264,3 +264,9 @@ def test_explain_without_key_or_model_falls_back(gemini_settings):
     assert run(scorer.explain(HELD, "", gemini_settings))[1] == "fallback"
     no_model = gemini_settings.model_copy(update={"gemini_model": ""})
     assert run(scorer.explain(HELD, "", no_model, fake_client()))[1] == "fallback"
+
+
+def test_items_not_on_the_menu():
+    risk = score_rules(facts(unpriced=2))
+    assert risk.score == 20
+    assert risk.reasons == ["2 item(s) not on the menu; the owner must price them"]

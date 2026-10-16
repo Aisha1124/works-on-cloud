@@ -98,6 +98,16 @@ class OrderItem(BaseModel):
     qty: int = Field(ge=1)
     unit_price: Decimal
     line_total: Decimal
+    request: str = ""  # buyer's custom request for this line; untrusted text, owner confirms
+
+
+class UnpricedRequest(BaseModel):
+    """A line the buyer asked for that is not on the menu. It has no price until the owner
+    sets one, so it is never part of the order total."""
+
+    name: str
+    qty: int = Field(ge=1)
+    request: str = ""
 
 
 class Risk(BaseModel):
@@ -121,6 +131,8 @@ class Order(BaseModel):
     risk: Risk | None = None
     status: OrderStatus
     rejection_reason: str = ""
+    unpriced_requests: list[UnpricedRequest] = Field(default_factory=list)
+    review_reasons: list[str] = Field(default_factory=list)  # why the owner must look at it
     created_at: datetime = Field(default_factory=utc_now)
 
 

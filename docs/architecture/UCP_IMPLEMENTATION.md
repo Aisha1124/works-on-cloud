@@ -92,7 +92,7 @@ These are things our demo needs that the spec does not define. All of them are n
 - Names, notes and agent names are untrusted data. They are never followed; the risk check flags
   instructions, links and payment-change requests in notes.
 - `complete` is rate-limited per client: 10 orders a minute per IP (the first
-  `X-Forwarded-For` hop on Cloud Run), shared with MCP `place_order`. The limit is held in
+  `X-Forwarded-For` hop on Cloud Run), shared with MCP `place_pickup_order`. The limit is held in
   memory per instance.
 - Every UCP request writes an `external_call` audit event with `actor = external_agent` and the
   agent name. The profile, and catalog calls without a shop, are logged under
