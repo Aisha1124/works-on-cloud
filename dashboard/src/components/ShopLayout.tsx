@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useParams } from 'react-router'
+import { Link, NavLink, Outlet, useMatch, useParams } from 'react-router'
 import { api } from '../lib/api'
 import { useLoad } from '../lib/hooks'
 import type { ShopContext } from '../lib/shop'
@@ -6,6 +6,7 @@ import type { ShopDetail } from '../lib/types'
 import { EmptyState, Signboard, Skeleton, buttonClass, cx } from '../ui'
 import { ErrorCard } from './ErrorCard'
 import { OwnerBar, RequireOwner } from './OwnerShell'
+import { ShareCard } from './Share'
 
 const tabs = [
   { to: '', label: 'Menu', end: true },
@@ -18,6 +19,8 @@ function ShopFrame() {
   const { id = '' } = useParams()
   const loaded = useLoad((signal) => api<ShopDetail>(`/api/shops/${encodeURIComponent(id)}`, { signal }), id)
   const shop = loaded.data?.shop
+  // The Live tab already shows the link, QR and MCP link (and, once, the owner key).
+  const onLiveTab = useMatch('/shop/:id/live') !== null
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pt-4 pb-32 sm:px-6 sm:pt-6">
@@ -44,6 +47,7 @@ function ShopFrame() {
             subtitle={shop.tagline || undefined}
             plate={shop.published ? `Live · /s/${shop.slug}` : 'Draft · not live yet'}
           />
+          {shop.published && !onLiveTab && loaded.data && <ShareCard shop={shop} links={loaded.data.links} />}
           <nav aria-label="Shop sections">
             <ul className="grid grid-cols-4 gap-1.5 sm:flex sm:gap-2">
               {tabs.map((t) => (

@@ -36,7 +36,7 @@ Needs Python 3.12, [uv](https://docs.astral.sh/uv/) and Node.js. Copy `.env.exam
 
 - `.\scripts\dev.ps1`: backend on http://localhost:8000 and dashboard on http://localhost:5173 (Ctrl+C stops both)
 - `.\scripts\build.ps1`: builds the dashboard into `dashboard/dist`, which FastAPI serves at `/`
-- `.\scripts\test.ps1`: runs pytest (extra arguments go to pytest)
+- `.\scripts\test.ps1`: runs pytest, then the dashboard tests (Vitest). Extra arguments go to pytest and skip the dashboard tests. Dashboard tests alone: `npm test` in `dashboard/`.
 
 The design system lives at http://localhost:5173/styleguide.
 

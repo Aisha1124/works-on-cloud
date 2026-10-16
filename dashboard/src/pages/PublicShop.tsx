@@ -1,6 +1,6 @@
-import { ArrowDown, Bot, Clock, MapPin, Phone } from 'lucide-react'
+import { ArrowDown, ArrowRight, Bot, Clock, MapPin, Phone } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { ErrorCard } from '../components/ErrorCard'
 import { MenuLines } from '../components/MenuLines'
 import { AddToOrder, Checkout, OrderResult } from '../components/ShopOrder'
@@ -19,6 +19,12 @@ function group(products: Product[]) {
     map.set(c, [...(map.get(c) ?? []), p])
   }
   return [...map.entries()]
+}
+
+/** One sentence a customer could type to their AI assistant, using a real item from this menu. */
+function exampleAsk(slug: string, products: Product[]): string {
+  const item = products.find((p) => p.available)?.name ?? 'your favourite item'
+  return `Order 2 boxes of ${item} from ${slug} for Saturday 10am pickup.`
 }
 
 // The last order placed from this tab, so a reload still shows its status.
@@ -164,6 +170,9 @@ export function PublicShop() {
               Add <code className="font-mono break-all text-turmeric">{page.data.links.mcp}</code> as a connector in Claude (or any MCP app), then ask
               it to order from “{shop.slug}”.
             </p>
+            <p className="text-sm">
+              <span className="text-turmeric">Try:</span> <q>{exampleAsk(shop.slug, page.data.products)}</q>
+            </p>
           </section>
 
           {cart.length > 0 && (
@@ -188,6 +197,13 @@ export function PublicShop() {
           )}
         </>
       )}
+
+      <footer className="border-t-2 border-dashed border-ink pt-4 text-center text-sm text-ink-soft">
+        Shop page made with <span className="font-semibold text-ink">KampungCart</span> ·{' '}
+        <Link to="/" className="focus-ring inline-flex items-center gap-1 font-semibold text-ink underline underline-offset-4">
+          Make one for your shop <ArrowRight aria-hidden className="size-4" />
+        </Link>
+      </footer>
     </main>
   )
 }

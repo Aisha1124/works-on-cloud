@@ -1,4 +1,4 @@
-import { ArrowRight } from 'lucide-react'
+import { ArrowDown, ArrowRight, Bot, Camera, QrCode, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { OwnerBar } from '../components/OwnerShell'
@@ -6,39 +6,103 @@ import { PhotoDrop } from '../components/PhotoDrop'
 import { ScanView, type ScanPhase } from '../components/ScanView'
 import { PHOTO_TIMEOUT_MS, api, errorText } from '../lib/api'
 import { setOwnerKey } from '../lib/ownerKey'
+import { goLive, liveScreen } from '../lib/publish'
+import { SAMPLE_SHOP } from '../lib/sample'
 import type { DraftResponse } from '../lib/types'
-import { ReceiptCard, ReceiptDivider, Signboard } from '../ui'
+import { Button, Signboard, buttonClass, cx, useToast } from '../ui'
 
-/** The sample shop seeded on every server (scripts/seed_shop.py). */
-const SAMPLE_SHOP = { slug: 'mak-kuih', name: "Mak's Kuih" }
-
-const steps = [
-  { n: '01', word: 'Snap', done: '1 photo', line: 'Your price list, menu board or Instagram post.' },
-  { n: '02', word: 'Check', done: 'fix', line: 'Fix any name, price, pack or flavour we read wrong.' },
-  { n: '03', word: 'Go live', done: 'open', line: 'AI agents can find your shop and place pickup orders.' },
+const STEPS: { icon: LucideIcon; who: string; line: string }[] = [
+  { icon: Camera, who: 'Owner', line: 'Snaps a menu photo. Gemini turns it into a menu.' },
+  { icon: QrCode, who: 'Owner', line: 'Taps Go live and gets a shop link, QR code and owner key.' },
+  { icon: Bot, who: 'Customers', line: 'Order from the link, or ask their AI assistant (Claude, Gemini) to order.' },
+  { icon: ShieldCheck, who: 'Orders', line: "Normal orders confirm automatically. Unusual ones wait for the owner's OK." },
 ]
 
-function StepsReceipt() {
+/** Two equal doors: one for shop owners, one for customers. */
+function AudienceButtons({ onOwner }: { onOwner: () => void }) {
+  const tile = 'h-full w-full flex-col items-start gap-1 py-4 text-left'
   return (
-    <ReceiptCard aria-label="How it works" paperClassName="font-mono">
-      <p className="text-center text-xs tracking-[0.3em] text-muted uppercase">How it works</p>
-      <ReceiptDivider />
-      <ol className="flex flex-col gap-4">
-        {steps.map((s) => (
-          <li key={s.n}>
-            <div className="flex items-baseline gap-2">
-              <span className="text-sm text-muted">{s.n}</span>
-              <span className="font-display text-2xl font-extrabold">{s.word}</span>
-              <span className="leader" aria-hidden />
-              <span className="text-sm font-semibold text-chili">{s.done}</span>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <button type="button" onClick={onOwner} className={buttonClass('primary', 'lg', tile)}>
+        <span className="font-mono text-xs tracking-widest uppercase opacity-90">I run a shop</span>
+        <span className="flex items-center gap-2 font-display text-2xl font-extrabold">
+          Upload my menu <ArrowDown aria-hidden className="size-6" />
+        </span>
+      </button>
+      <Link to={`/s/${SAMPLE_SHOP.slug}`} className={buttonClass('approve', 'lg', tile)}>
+        <span className="font-mono text-xs tracking-widest uppercase opacity-90">I'm a customer</span>
+        <span className="flex items-center gap-2 font-display text-2xl font-extrabold">
+          See a live shop <ArrowRight aria-hidden className="size-6" />
+        </span>
+      </Link>
+    </div>
+  )
+}
+
+function HowItWorks() {
+  return (
+    <section aria-labelledby="how-it-works" className="flex flex-col gap-3">
+      <h2 id="how-it-works" className="text-2xl sm:text-3xl">
+        How KampungCart works
+      </h2>
+      <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {STEPS.map(({ icon: Icon, who, line }, i) => (
+          <li key={line} className="flex gap-3 border-2 border-ink bg-receipt p-4 shadow-hard-sm lg:flex-col">
+            <div className="flex flex-none items-center gap-3 lg:justify-between">
+              <span className="font-mono text-2xl font-semibold text-chili">{i + 1}</span>
+              <span className="grid size-10 place-items-center border-2 border-ink bg-turmeric">
+                <Icon aria-hidden className="size-5" />
+              </span>
             </div>
-            <p className="pl-7 text-xs leading-snug text-ink-soft">{s.line}</p>
+            <p className="min-w-0">
+              <span className="block font-mono text-xs tracking-widest text-muted uppercase">{who}</span>
+              <span className="leading-snug">{line}</span>
+            </p>
           </li>
         ))}
       </ol>
-      <ReceiptDivider />
-      <p className="text-center text-xs text-muted">Payment at pickup · SGD</p>
-    </ReceiptCard>
+    </section>
+  )
+}
+
+/** After the menu is read: the next step, always on screen. */
+function GoLiveBar({ shopId, count }: { shopId: string; count: number }) {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+
+  async function publish() {
+    setBusy(true)
+    try {
+      const { ownerKey } = await goLive(shopId)
+      const next = liveScreen(shopId, ownerKey)
+      navigate(next.to, next.options)
+    } catch (err) {
+      // e.g. no item has a price yet: the menu screen is where to fix that.
+      toast.show(errorText(err), 'error')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-ink bg-receipt" role="region" aria-label="Next step">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <p className="font-mono text-sm">
+          <span className="font-semibold">
+            {count} item{count === 1 ? '' : 's'} read
+          </span>
+          <span className="hidden text-ink-soft sm:inline"> · you can edit them any time</span>
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to={`/shop/${shopId}`} className={buttonClass('secondary', 'md')}>
+            Fix something first
+          </Link>
+          <Button size="lg" loading={busy} onClick={publish}>
+            Looks right? Go live <ArrowRight aria-hidden className="size-5" />
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -50,6 +114,7 @@ export function Onboarding() {
   const [result, setResult] = useState<DraftResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const ctrlRef = useRef<AbortController | null>(null)
+  const uploadRef = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => () => photos.forEach((u) => URL.revokeObjectURL(u)), [photos])
   useEffect(() => () => ctrlRef.current?.abort(), [])
@@ -94,51 +159,54 @@ export function Onboarding() {
     setResult(null)
   }
 
+  function toUpload() {
+    const target = uploadRef.current
+    if (!target) return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    target.scrollIntoView?.({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+    target.focus({ preventScroll: true })
+  }
+
+  const read = phase === 'done' && result && result.products.length > 0
+
   return (
     // The right gutter is 4px wider than the left so the hard shadows don't eat into it.
-    <main className="mx-auto flex max-w-6xl flex-col gap-6 pt-4 pr-5 pb-16 pl-4 sm:pt-6 sm:pr-7 sm:pl-6">
+    <main className={cx('mx-auto flex max-w-6xl flex-col gap-8 pt-4 pr-5 pl-4 sm:pt-6 sm:pr-7 sm:pl-6', read ? 'pb-36' : 'pb-16')}>
       <OwnerBar />
-      <Signboard
-        plate={
-          <>
-            For Singapore <span className="hidden sm:inline">home bakers, hawkers &amp; heartland </span>shops
-          </>
-        }
-        title="Make your shop AI‑ready from one photo."
-        subtitle={
-          <span className="hidden sm:inline">
-            AI shopping assistants can find your menu, get a quote and place pickup orders. You approve anything unusual.
-          </span>
-        }
-      />
-      {phase === 'idle' && (
-        <p className="-mt-2">
-          <Link
-            to={`/s/${SAMPLE_SHOP.slug}`}
-            className="focus-ring inline-flex items-center gap-1.5 font-semibold underline decoration-2 underline-offset-4 hover:text-chili"
-          >
-            See a live shop: {SAMPLE_SHOP.name} <ArrowRight aria-hidden className="size-4" />
-          </Link>
-        </p>
-      )}
+      <div className="flex flex-col gap-5">
+        <Signboard
+          plate={
+            <>
+              For Singapore <span className="hidden sm:inline">home bakers, hawkers &amp; heartland </span>shops
+            </>
+          }
+          title="Make your shop AI‑ready from one photo."
+          subtitle={
+            <span className="hidden sm:inline">
+              Customers and their AI assistants can read your menu and place pickup orders. You approve anything unusual.
+            </span>
+          }
+        />
+        {phase === 'idle' && <AudienceButtons onOwner={toUpload} />}
+      </div>
 
-      {phase === 'idle' ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
-          <div className="flex min-w-0 flex-col">
-            <PhotoDrop
-              onFiles={start}
-              title={
-                <>
-                  <span className="sm:hidden">Snap your menu</span>
-                  <span className="hidden sm:inline">Drop your menu photo here</span>
-                </>
-              }
-            />
-          </div>
-          <StepsReceipt />
-        </div>
-      ) : (
-        <section aria-label="Reading your menu">
+      {phase === 'idle' && <HowItWorks />}
+
+      <section aria-labelledby="upload-menu" className="flex scroll-mt-4 flex-col gap-3">
+        <h2 id="upload-menu" ref={uploadRef} tabIndex={-1} className="text-2xl outline-none sm:text-3xl">
+          {phase === 'idle' ? 'Upload your menu' : 'Reading your menu'}
+        </h2>
+        {phase === 'idle' ? (
+          <PhotoDrop
+            onFiles={start}
+            title={
+              <>
+                <span className="sm:hidden">Snap your menu</span>
+                <span className="hidden sm:inline">Drop your menu photo here</span>
+              </>
+            }
+          />
+        ) : (
           <ScanView
             photos={photos}
             phase={phase}
@@ -147,10 +215,14 @@ export function Onboarding() {
             error={error}
             onRetry={() => void upload(files)}
             onCancel={reset}
-            onContinue={result ? () => navigate(`/shop/${result.shop.id}`) : undefined}
+            // With items, the sticky bar below is the next step. With none, add them by hand.
+            onContinue={result && !read ? () => navigate(`/shop/${result.shop.id}`) : undefined}
+            continueLabel="Add items by hand"
           />
-        </section>
-      )}
+        )}
+      </section>
+
+      {read && <GoLiveBar shopId={result.shop.id} count={result.products.length} />}
     </main>
   )
 }
