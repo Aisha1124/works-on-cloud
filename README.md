@@ -6,6 +6,40 @@ AI shopping agents are becoming the new way people shop. Small shops without web
 
 Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
+## For judges
+
+**Live:** `https://<LIVE-URL>` (placeholder: the deployed Cloud Run URL goes here)
+
+### Try it in 2 minutes
+1. **Owner: photo → live shop.** Open the live URL, tap **I run a shop · Upload my menu** and drop a photo of a
+   menu or price list (sample photos are in `tests/eval_data/menus/`). Gemini reads it into a
+   menu; items it wants you to check are highlighted. Tap **Go live**, enter a shop name and an
+   email. You get a shop link, a QR code and a backup key.
+2. **Customer: order from the example shop.** Open `https://<LIVE-URL>/s/mak-kuih`. Add
+   **Kuih Lapis, 20 pcs**, pick a day and time (only times the shop can take are offered: open
+   hours, 24 hours' notice, no Mondays), enter a name and a Singapore phone number like
+   `+65 9123 4567`, and place the order. It is **confirmed**, and you get a private link to
+   check or cancel it ("Save this link to check your order").
+3. **A big order gets held.** Order again, this time **10 × Kuih Lapis, 40 pcs** (S$300). That is
+   above the shop's S$150 auto-approve limit, so it shows **Sent to the owner for approval** and
+   the status page keeps checking.
+4. **Owner approves.** Sign in to the example shop (below), open **Orders → Needs approval** and
+   tap **Approve**. The customer's status page turns to **Confirmed** within about 10 seconds.
+   The **Audit log** tab shows every step and who did it (customer, risk agent, system, owner).
+5. **AI order via MCP.** In Claude (Settings → Connectors → Add custom connector) add
+   `https://<LIVE-URL>/mcp`, then ask: *"Order 2 boxes of Kuih Lapis, 20 pcs, from mak-kuih for
+   pickup this Saturday at 10am. Name Siti, phone +65 9123 4567."* The agent finds the shop, gets
+   a quote and places the order; it appears in the owner's Orders tab as "via MCP". Ask it for a
+   Monday instead and it gets the reason ("closed") plus the next 3 free pickup times.
+
+### Sign in to the example shop
+On the live site, **Shop owner login** (top right) → **Use backup key instead** → paste the
+example shop's backup key. That key is the `OWNER_KEY` secret of the deployment; the team shares
+it with judges separately. It opens `mak-kuih` only. (If `SAMPLE_OWNER_EMAIL` is set, that inbox
+can also sign in with an emailed link.)
+
+Mak's Kuih is an example shop, not a real business: its page says so.
+
 ## Team: Works On Cloud
 - Aisha Siddiqua (Lead): agents, AI, MCP
 - Bijay Pathak: infrastructure, deployment, security, deck
@@ -17,11 +51,12 @@ The catalog extraction prompt was first prototyped and tested in Google AI Studi
 
 One Cloud Run container (asia-southeast1) serves the API, the MCP server, the UCP endpoints and the built dashboard. In production Gemini runs through Vertex AI (`GOOGLE_GENAI_USE_VERTEXAI=true`, the Cloud Run service account, no API key) at the `global` location, because the Gemini Interactions API the app uses is served from `global` only on Vertex AI (preview). Local development uses `GEMINI_API_KEY`. It is deployed with `gcloud run deploy --source .`, which uses Cloud Build only to build the image.
 
-Deploy steps (from Google Cloud Shell) are in [infra/DEPLOY.md](infra/DEPLOY.md). Production currently
-runs with `STORE_BACKEND=local`: data lives in the container and is reset on every restart, and the
-sample shop `mak-kuih` is seeded at startup.
-
-**Next:** implement FirestoreStore and switch production to `STORE_BACKEND=firestore`.
+Deploy steps (from Google Cloud Shell) are in [infra/DEPLOY.md](infra/DEPLOY.md). Production runs
+with `STORE_BACKEND=firestore`: shops, orders, the audit log, sessions and rate limits live in
+Firestore (Native mode, asia-southeast1), so they survive restarts and redeploys and all instances
+share them. Menu photos go to a private Cloud Storage bucket. The sample shop `mak-kuih` is created
+at startup only if it doesn't exist yet. Local development uses `STORE_BACKEND=local` (JSON files in
+`data/`).
 
 ## Structure
 - `agents/`: ADK + Gemini agents
@@ -90,7 +125,8 @@ npm scripts call each tool with `node ./node_modules/...` directly. Keep that pa
 - **Sessions** are a random token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` on HTTPS),
   stored as a hash, valid 30 days, ended by **Sign out**. Cookie-signed changes also need the
   dashboard's `X-Requested-With` header (CSRF guard).
-- **Rate limits** (per client IP, in memory): 10 wrong owner keys or bad sign-in links per 5
+- **Rate limits** (per client IP, kept in the store so every instance shares them; IPs are stored
+  hashed): 3 "report this shop" per hour, 10 wrong owner keys or bad sign-in links per 5
   minutes (then 429), 5 sign-in emails per IP and 3 per email address per 15 minutes, 3 "send the
   confirm link again" per shop per 15 minutes, 5 new menu-photo reads (the upload that needs no
   sign-in) per 10 minutes, and 10 orders a minute across MCP, UCP and the shop page.
@@ -119,8 +155,31 @@ npm scripts call each tool with `node ./node_modules/...` directly. Keep that pa
 - **Secrets** live in Secret Manager on Cloud Run and in a gitignored `.env` locally. None are in
   the image or the repo.
 
-Not done yet: changing the owner email or rotating the backup key from the dashboard, and rate
-limits shared across instances (production runs one instance).
+- **Customer privacy.** The order form says name and phone are only shared with the shop. `/privacy`
+  says what is collected, why, for how long and how to ask for deletion (`ADMIN_EMAIL`). Customer
+  name, phone, email and note are erased automatically 90 days after pickup.
+- **Customer status links** are `/o/{id}?t={token}` with a random 128-bit token; without the right
+  token an order looks like it doesn't exist.
+
+Not done yet: changing the owner email or rotating the backup key from the dashboard.
+
+## Customers
+- **Status link:** every order (shop page, MCP, UCP) gets a private link `/o/{id}?t={token}` that
+  shows the latest status. The shop page says "Save this link to check your order"; MCP returns it
+  as `status_url`.
+- **Email updates (optional):** customers who give an email are told when the order is confirmed,
+  rejected, expires or is cancelled.
+- **Held orders expire:** if the owner doesn't decide within the shop's approval timeout (default
+  24 hours), the order is rejected with "The shop didn't respond in time" and the customer is told.
+- **Cancel:** customers can cancel from the status page until the shop's cutoff (default 12 hours
+  before pickup). The owner gets an email.
+- **Report this shop:** a link on every shop page sends a short report to `ADMIN_EMAIL`.
+
+## Ordering rules (owner Settings tab, all Singapore time)
+- Pickup only inside the **opening hours**, after the **minimum notice** (default 24 hours), and
+  not on days that reached the optional **daily capacity**. The shop page only offers such slots.
+- **Pause orders until a date:** the shop page, MCP and llms.txt say "Not taking orders until …".
+- Also set there: approval timeout, cancel cutoff and the auto-approve limit.
 
 ## Connect an AI agent
 Every published shop can be used by any AI agent that speaks MCP (Claude, Gemini, ChatGPT with
@@ -136,9 +195,9 @@ MCP support) through one MCP server, using the streamable HTTP transport:
 | `find_shops(query?)` | Lists published shops and their `shop_slug`. |
 | `get_shop(shop_slug)` | Address, opening hours, phone and categories. |
 | `get_menu(shop_slug, query?, category?)` | Items with price in SGD, category, availability, notes, sizes and options. |
-| `get_quote(shop_slug, items, pickup_time?)` | Line items and subtotal priced from the menu, plus `needs_owner_approval` and the reasons. |
-| `place_pickup_order(shop_slug, items, pickup_time, customer_name, customer_phone, note?)` | Returns `order_id` and a status of `confirmed` or `pending_owner_approval`. |
-| `get_order_status(order_id)` | `confirmed`, `pending_owner_approval`, `rejected`, `ready` or `done`. |
+| `get_quote(shop_slug, items, pickup_time?)` | Line items and subtotal priced from the menu, plus `needs_owner_approval` and the reasons. If the pickup time can't be taken: `pickup_ok: false`, the reason and `next_available_pickups` (3 times). |
+| `place_pickup_order(shop_slug, items, pickup_time, customer_name, customer_phone, note?, customer_email?, idempotency_key?)` | Returns `order_id`, a status of `confirmed` or `pending_owner_approval`, and the buyer's private `status_url`. An invalid pickup time returns the reason and the next 3 free times. The same `idempotency_key` returns the same order instead of a new one. |
+| `get_order_status(order_id)` | `confirmed`, `pending_owner_approval`, `rejected`, `ready`, `done` or `cancelled`. |
 
 An item is `{"name": "Kuih Lapis", "qty": 2, "variant": "20 pcs"}`. You can also send
 `product_id`, `options` and a `request`. Prices always come from the shop's stored menu. A price
@@ -149,8 +208,10 @@ An order is held as `pending_owner_approval` until the owner approves it in the 
 - a line has a custom request;
 - a quantity is more than 3 times the item's largest pack;
 - the total is above the shop's auto-approve limit;
-- the pickup time is outside opening hours;
 - the risk check scores the order medium or high.
+
+A pickup time outside opening hours, too soon for the shop's notice, on a fully booked day or
+while the shop is paused is refused, with the next available times.
 
 The read tools are public. `place_pickup_order` is limited to 10 orders a minute per client IP.
 
@@ -184,9 +245,10 @@ that is not on the menu, and a risky order.
 
 ### Order from the shop page
 Every live shop has a public page at `/s/{shop_slug}` (the sample shop is `/s/mak-kuih`). Customers
-add items, pick a pickup time, enter a name and phone number and place the order. No key, no
-signup. The page shows "Confirmed" or "Sent to the owner for approval" with the reason in plain
-English, and updates when the owner decides.
+add items, pick a day and a time from the free pickup slots, enter a name and phone number (and an
+email for updates, if they like) and place the order. No key, no signup. The page shows
+"Confirmed" or "Sent to the owner for approval" with the reason in plain English, the private
+status link, and updates when the owner decides.
 
 ### AI-readable shop pages (no setup)
 Every `/s/{shop_slug}` page is server-rendered with schema.org JSON-LD: a `FoodEstablishment`
