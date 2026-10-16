@@ -40,6 +40,7 @@ class OrderStatus(StrEnum):
     rejected = "rejected"
     ready = "ready"
     done = "done"
+    cancelled = "cancelled"  # by the customer, from their order status page
 
 
 class Actor(StrEnum):
@@ -69,6 +70,10 @@ class Shop(BaseModel):
     # Set when the shop goes live. Owner-only: never part of a public or agent response.
     owner_email: str = ""
     email_verified: bool = False
+    # A held order the owner hasn't decided within this many hours is rejected automatically.
+    approval_timeout_hours: int = Field(default=24, ge=1, le=168)
+    # Customers can cancel from their status page until this many hours before pickup.
+    cancel_cutoff_hours: int = Field(default=12, ge=0, le=168)
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -135,6 +140,7 @@ class Order(BaseModel):
     total: Decimal
     customer_name: str
     customer_phone: str
+    customer_email: str = ""  # optional: status updates by email
     pickup_at: datetime
     note: str = ""
     channel: Channel
@@ -142,6 +148,10 @@ class Order(BaseModel):
     risk: Risk | None = None
     status: OrderStatus
     rejection_reason: str = ""
+    expired: bool = False  # rejected because the owner didn't decide in time
+    # Secret part of the customer's status link /o/{id}?t={token}. Never sent to agents
+    # except in the status link itself.
+    status_token: str = ""
     unpriced_requests: list[UnpricedRequest] = Field(default_factory=list)
     review_reasons: list[str] = Field(default_factory=list)  # why the owner must look at it
     review_codes: list[str] = Field(default_factory=list)  # commerce.HOLD_SENTENCES keys

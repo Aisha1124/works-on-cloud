@@ -147,3 +147,79 @@ def order_email(shop: Shop, order: Order, review_url: str) -> Email:
     title = "An order is waiting for your OK" if held else "New order"
     return Email(to=shop.owner_email, subject=subject, text=text, html=_page(title, body),
                  idempotency_key=f"order-{order.id}", tags={"kind": "order"})
+
+
+def _item_lines(order: Order) -> list[str]:
+    return [f"{line.qty} x {line.name}" + (f" ({line.variant})" if line.variant else "")
+            + f" ... {money(line.line_total)}" for line in order.items]
+
+
+# --- customer updates ---------------------------------------------------------------------
+
+# kind -> (subject start, stamp word, stamp colour, headline)
+CUSTOMER_KINDS = {
+    "confirmed": ("Confirmed", "CONFIRMED", "#CDE8D6", "Your order is confirmed"),
+    "rejected": ("Not accepted", "REJECTED", "#F6C9C6", "The shop couldn't take your order"),
+    "expired": ("Not accepted", "EXPIRED", "#F6C9C6", "The shop didn't respond in time"),
+    "cancelled": ("Cancelled", "CANCELLED", "#F6C9C6", "Your order is cancelled"),
+}
+
+
+def customer_email(shop: Shop, order: Order, kind: str, status_url: str) -> Email:
+    """A status update to the customer who left their email. kind: CUSTOMER_KINDS key."""
+    start, stamp, colour, headline = CUSTOMER_KINDS[kind]
+    shop_name = _one_line(shop.name)
+    pickup = f"{to_sg(order.pickup_at):%a %d %b, %H:%M}"
+    subject = f"{start}: your order from {shop_name} (pickup {pickup})"
+    if kind == "confirmed":
+        lead = f"See you at pickup on {pickup}. Please pay the shop when you collect."
+    elif kind == "rejected":
+        lead = "Sorry, the shop can't make this order."
+    elif kind == "expired":
+        lead = "The shop didn't reply in time, so this order is cancelled. You won't be charged."
+    else:
+        lead = "Your order is cancelled. The shop has been told. You won't be charged."
+    reason = order.rejection_reason if kind == "rejected" else ""
+    items = _item_lines(order)
+    text = "\n".join([
+        f"{headline} - {shop_name}, order {order.id}", "", lead,
+        *([f"Reason from the shop: {reason}"] if reason else []), "", *items,
+        f"Total: {money(order.total)} (pay at pickup)", f"Pickup: {pickup}", "",
+        f"Check your order: {status_url}",
+    ])
+    rows = "".join(
+        f'<tr><td style="padding:4px 0">{_e(t.rsplit(" ... ", 1)[0])}</td>'
+        f'<td style="padding:4px 0;text-align:right;font-family:monospace">'
+        f'{_e(t.rsplit(" ... ", 1)[1])}</td></tr>' for t in items)
+    body = (
+        f'<p style="margin:0 0 12px"><span style="border:2px solid {INK};padding:2px 8px;'
+        f'font-weight:700;background:{colour}">{stamp}</span> <span style="font-family:monospace;'
+        f'font-size:13px">{_e(shop_name)} · order {_e(order.id)}</span></p>'
+        f"<p>{_e(lead)}</p>"
+        + (f"<p>Reason from the shop: <b>{_e(reason)}</b></p>" if reason else "")
+        + f'<table style="width:100%;border-collapse:collapse;border-top:2px dashed {INK};'
+        f'border-bottom:2px dashed {INK}">{rows}'
+        f'<tr><td style="padding:6px 0;font-weight:700">TOTAL</td><td style="padding:6px 0;'
+        f'text-align:right;font-family:monospace;font-weight:700">{money(order.total)}</td></tr>'
+        f'</table><p style="margin:12px 0 0">Pickup: <b>{_e(pickup)}</b> · pay at pickup</p>'
+        f"{_button(status_url, 'Check my order')}"
+    )
+    return Email(to=order.customer_email, subject=subject, text=text,
+                 html=_page(headline, body), idempotency_key=f"customer-{kind}-{order.id}",
+                 tags={"kind": f"customer_{kind}"})
+
+
+def owner_cancelled_email(shop: Shop, order: Order, orders_url: str) -> Email:
+    first = _one_line(order.customer_name.split()[0] if order.customer_name.split() else "A customer", 40)
+    pickup = f"{to_sg(order.pickup_at):%a %d %b, %H:%M}"
+    subject = f"Cancelled: {first}'s order for {pickup} ({money(order.total)})"
+    items = _item_lines(order)
+    text = "\n".join([f"{first} cancelled order {order.id}. No need to prepare it.", "",
+                      *items, f"Pickup was: {pickup}", "", f"See your orders: {orders_url}"])
+    body = (f"<p><b>{_e(first)}</b> cancelled order <span style=\"font-family:monospace\">"
+            f"{_e(order.id)}</span>. No need to prepare it.</p>"
+            + "".join(f"<p style=\"margin:2px 0\">{_e(t)}</p>" for t in items)
+            + f"<p>Pickup was: <b>{_e(pickup)}</b></p>{_button(orders_url, 'See your orders')}")
+    return Email(to=shop.owner_email, subject=subject, text=text,
+                 html=_page("An order was cancelled", body),
+                 idempotency_key=f"owner-cancelled-{order.id}", tags={"kind": "owner_cancelled"})

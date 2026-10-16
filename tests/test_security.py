@@ -179,10 +179,15 @@ def test_customer_order_is_confirmed_with_menu_prices(api, store):
     received = next(e for e in store.list_audit_events(order.shop_id)
                     if e.action == "order_received")
     assert received.actor == Actor.customer
-    # The customer can check the status later; still no phone, no risk.
-    status = api.get(f"/api/public/orders/{body['order_id']}")
+    # The customer can check the status later with their private link; still no phone, no risk.
+    assert body["status_url"] == (f"http://localhost:8000/o/{order.id}?t={order.status_token}")
+    assert len(order.status_token) >= 20
+    status = api.get(f"/api/public/orders/{body['order_id']}", params={"t": order.status_token})
     assert status.status_code == 200
     assert status.json()["status"] == body["status"] and "9123" not in status.text
+    # Without the token (or with a wrong one) the order looks like it doesn't exist.
+    assert api.get(f"/api/public/orders/{order.id}").status_code == 404
+    assert api.get(f"/api/public/orders/{order.id}", params={"t": "guess"}).status_code == 404
 
 
 def test_low_risk_customer_order_is_confirmed(api, store):

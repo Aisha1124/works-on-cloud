@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from agents.approval import service as approval
 from agents.commerce import service as commerce
+from backend import notify
 from backend.api.config import Settings
 from backend.external import (
     GENERIC_ERROR, MAX_ID_LEN, MAX_QUERY_LEN, MAX_SLUG_LEN, RATE_LIMIT_MESSAGE, RateLimiter,
@@ -280,6 +281,10 @@ def create_mcp_server(store: Store, settings: Settings,
                                                          "+65 9123 4567.", max_length=30)],
         note: Annotated[str, Field(description="Optional note for the shop (max 500 "
                                                "characters).")] = "",
+        customer_email: Annotated[str, Field(
+            description="Optional buyer email. If given, the buyer is emailed when the order "
+                        "is confirmed, rejected, expires or is cancelled.",
+            max_length=254)] = "",
         agent_name: AgentName = None,
     ) -> dict[str, Any]:
         agent, key = caller(ctx, agent_name)
@@ -289,13 +294,16 @@ def create_mcp_server(store: Store, settings: Settings,
                 raise ToolError(RATE_LIMIT_MESSAGE)
             order = await commerce.place_order(
                 store, shop.id, _items(items), customer_name, customer_phone, pickup_time, note,
-                Channel.mcp, agent, settings=settings)
+                Channel.mcp, agent, customer_email=customer_email, settings=settings)
             held = order.status == OrderStatus.pending_approval
             out = {"order_id": order.id, "status": BUYER_STATUS[order.status],
                    "subtotal": _money(order.total), "currency": shop.currency,
                    "unpriced_items": _unpriced_out(order.unpriced_requests),
                    "pickup_time": to_sg(order.pickup_at).isoformat(),
                    "message": commerce.buyer_message(shop, order),
+                   "status_url": notify.status_url(settings, order),
+                   "status_url_note": ("Give this private link to the buyer: they can check "
+                                       "the order and cancel it there."),
                    "payment": "Pay at pickup"}
             if held:
                 # Only the deterministic menu/limit reasons. Risk scoring stays private so
@@ -306,7 +314,7 @@ def create_mcp_server(store: Store, settings: Settings,
         return await run("place_pickup_order", agent, by_slug(shop_slug), body)
 
     @mcp.tool(description="Current status of an order: confirmed, pending_owner_approval, "
-                          "rejected, ready or done, with a plain message.")
+                          "rejected, ready, done or cancelled, with a plain message.")
     async def get_order_status(
         ctx: Context,
         order_id: Annotated[str, Field(description="order_id from place_pickup_order.",
@@ -315,7 +323,7 @@ def create_mcp_server(store: Store, settings: Settings,
         agent, _ = caller(ctx)
 
         def body(shop: Shop):
-            status = commerce.get_order_status(store, shop.id, order_id)
+            status = commerce.get_order_status(store, shop.id, order_id, settings)
             return {**status, "status": BUYER_STATUS[OrderStatus(status["status"])],
                     "shop_slug": shop.slug}
 

@@ -1,11 +1,11 @@
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError, api, errorText } from '../lib/api'
-import { usePoll } from '../lib/hooks'
-import { formatPickup } from '../lib/time'
 import { lineKey } from '../lib/cart'
 import type { CartLine, PricedLine, Product, WebOrder, WebQuote } from '../lib/types'
-import { Button, Input, PriceTag, ReceiptCard, ReceiptDivider, ReceiptRow, ReceiptTotal, Select, Stamp, Textarea } from '../ui'
+import { Button, Input, PriceTag, ReceiptCard, ReceiptDivider, ReceiptRow, ReceiptTotal, Select, Textarea } from '../ui'
+import { tokenOf } from '../lib/order'
+import { OrderStatusCard } from './OrderStatusCard'
 
 /* ------------------------------------------------------------------ cart */
 
@@ -119,6 +119,7 @@ export function Checkout({
 }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [pickup, setPickup] = useState('')
   const [note, setNote] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -133,6 +134,7 @@ export function Checkout({
     if (!name.trim()) errs.name = 'Your name, so the shop knows who is picking up.'
     if (!phone.trim()) errs.phone = 'A Singapore phone number, in case the shop needs to reach you.'
     if (!pickup) errs.pickup = 'Pick a date and time to collect your order.'
+    if (email.trim() && !/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email.trim())) errs.email = 'Check your email address, or leave it empty.'
     setErrors(errs)
     if (Object.keys(errs).length) return
     setBusy(true)
@@ -141,7 +143,7 @@ export function Checkout({
       const order = await api<WebOrder>(`/api/public/shops/${encodeURIComponent(slug)}/orders`, {
         method: 'POST',
         owner: false,
-        json: { items: cart, customer_name: name, customer_phone: phone, pickup_time: pickup, note },
+        json: { items: cart, customer_name: name, customer_phone: phone, customer_email: email.trim(), pickup_time: pickup, note },
       })
       onPlaced(order)
     } catch (err) {
@@ -212,6 +214,17 @@ export function Checkout({
           hint="Only the shop owner sees this."
         />
         <Input
+          label="Email for order updates (optional)"
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          maxLength={254}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          error={errors.email}
+          hint="We'll email you when the shop confirms, rejects or cancels."
+        />
+        <Input
           label="Pickup date and time (Singapore time)"
           type="datetime-local"
           min={minPickup()}
@@ -236,57 +249,17 @@ export function Checkout({
 
 /* ------------------------------------------------------------------ result */
 
-const STATUS_VIEW: Record<WebOrder['status'], { stamp: 'approved' | 'held' | 'rejected'; label: string; title: string }> = {
-  confirmed: { stamp: 'approved', label: 'Confirmed', title: 'Confirmed' },
-  pending_owner_approval: { stamp: 'held', label: 'Sent to owner', title: 'Sent to the owner for approval' },
-  rejected: { stamp: 'rejected', label: 'Rejected', title: "The shop couldn't take this order" },
-  ready: { stamp: 'approved', label: 'Ready', title: 'Ready for pickup' },
-  done: { stamp: 'approved', label: 'Collected', title: 'Collected' },
-}
-
-/** After ordering: the status in plain words. A held order keeps checking for the owner's decision. */
+/** After ordering: the status, the private link to come back to, and Cancel. */
 export function OrderResult({ initial, onNewOrder }: { initial: WebOrder; onNewOrder: () => void }) {
-  const [order, setOrder] = useState(initial)
-  usePoll(
-    async () => {
-      setOrder(await api<WebOrder>(`/api/public/orders/${encodeURIComponent(order.order_id)}`, { owner: false }))
-    },
-    10_000,
-    order.status === 'pending_owner_approval',
-  )
-  const view = STATUS_VIEW[order.status]
-
   return (
-    <ReceiptCard aria-live="polite">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <p className="font-mono text-xs tracking-widest text-muted uppercase">Order {order.order_id}</p>
-          <h2 className="text-3xl">{view.title}</h2>
-        </div>
-        <Stamp key={order.status} kind={view.stamp} label={view.label} size="lg" animate />
-      </div>
-      <p className="mt-3 text-lg">{order.message}</p>
-      {order.rejection_reason && <p className="mt-1 text-ink-soft">Reason from the shop: {order.rejection_reason}</p>}
-      {order.status === 'pending_owner_approval' && (
-        <p className="mt-1 text-sm text-ink-soft">Keep this page open. It updates when the owner decides.</p>
-      )}
-      <ReceiptDivider />
-      <ul>
-        {order.items.map((l, i) => (
-          <li key={i}>
-            <ReceiptRow label={`${l.qty} × ${l.name}`} hint={optionsText(l) || undefined} value={<PriceTag value={l.line_total} />} />
-          </li>
-        ))}
-      </ul>
-      <div className="mt-2">
-        <ReceiptTotal value={<PriceTag value={order.total} size="lg" />} />
-      </div>
-      <p className="mt-3 font-mono text-sm">Pickup: {formatPickup(order.pickup_time)} · pay at pickup</p>
-      <div className="py-4">
+    <OrderStatusCard
+      initial={initial}
+      token={tokenOf(initial.status_url)}
+      footer={
         <Button variant="secondary" onClick={onNewOrder}>
           Start a new order
         </Button>
-      </div>
-    </ReceiptCard>
+      }
+    />
   )
 }

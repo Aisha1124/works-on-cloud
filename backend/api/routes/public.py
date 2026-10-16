@@ -1,18 +1,20 @@
 """Public shop page: menu JSON for the SPA, /s/{slug} with schema.org JSON-LD, llms.txt files
 for AI crawlers, and pickup orders from customers (no key, no signup). Customers never see risk details or other orders."""
 
+import hmac
 import html
 import json
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
+from agents.approval import service as approval
 from agents.commerce import service as commerce
-from backend import ai_readable
+from backend import ai_readable, mailer, notify
 from backend.api.config import Settings
 from backend.api.deps import caller
 from backend.api.routes.shops import ShopLinks, shop_links
@@ -90,6 +92,7 @@ class WebOrderIn(BaseModel):
     customer_phone: str = Field(max_length=30)
     pickup_time: str = Field(max_length=40)
     note: str = Field(default="", max_length=commerce.MAX_NOTE_LEN)
+    customer_email: str = Field(default="", max_length=254)
 
 
 class WebOrderLine(BaseModel):
@@ -107,23 +110,37 @@ class WebOrderOut(BaseModel):
 
     order_id: str
     shop_slug: str
-    status: str  # confirmed | pending_owner_approval | rejected | ready | done
+    shop_name: str
+    # confirmed | pending_owner_approval | rejected | ready | done | cancelled
+    status: str
     message: str
     rejection_reason: str
+    expired: bool  # rejected because the shop didn't respond in time
     items: list[WebOrderLine]
     total: Decimal
     currency: str
     pickup_time: str
+    # The customer's private link to this page. Only ever sent to the person who has the token.
+    status_url: str
+    can_cancel: bool
+    cancel_until: str  # ISO time, Singapore
+    email_updates_to: str  # masked, e.g. "s***@gmail.com"; "" when no email was given
 
 
-def _order_out(shop: Shop, order: Order) -> WebOrderOut:
+def _order_out(request: Request, shop: Shop, order: Order) -> WebOrderOut:
     return WebOrderOut(
-        order_id=order.id, shop_slug=shop.slug, status=commerce.BUYER_STATUS[order.status],
-        message=commerce.buyer_message(shop, order),
-        rejection_reason=order.rejection_reason if order.status == OrderStatus.rejected else "",
+        order_id=order.id, shop_slug=shop.slug, shop_name=shop.name,
+        status=commerce.BUYER_STATUS[order.status], message=commerce.buyer_message(shop, order),
+        rejection_reason=(order.rejection_reason
+                          if order.status == OrderStatus.rejected and not order.expired else ""),
+        expired=order.expired,
         items=[WebOrderLine(**line.model_dump(include=set(WebOrderLine.model_fields)))
                for line in order.items],
         total=order.total, currency=shop.currency, pickup_time=to_sg(order.pickup_at).isoformat(),
+        status_url=notify.status_url(request.app.state.settings, order),
+        can_cancel=approval.can_cancel(shop, order),
+        cancel_until=to_sg(approval.cancel_deadline(shop, order)).isoformat(),
+        email_updates_to=mailer.mask_email(order.customer_email) if order.customer_email else "",
     )
 
 
@@ -171,21 +188,51 @@ async def place_web_order(request: Request, slug: str, body: WebOrderIn) -> WebO
         order = await commerce.place_order(
             store, shop.id, [line.model_dump() for line in body.items], body.customer_name,
             body.customer_phone, body.pickup_time, body.note, Channel.web, "",
-            actor=Actor.customer, settings=request.app.state.settings)
+            customer_email=body.customer_email, actor=Actor.customer,
+            settings=request.app.state.settings)
     except commerce.OrderValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    return _order_out(shop, order)
+    return _order_out(request, shop, order)
 
 
-@router.get("/api/public/orders/{order_id}", response_model=WebOrderOut)
-def get_web_order(request: Request, order_id: str) -> WebOrderOut:
-    """Status of one order, for the customer who placed it (the id is only shown to them)."""
+ORDER_NOT_FOUND = "We can't find that order. Check that you opened the full link."
+
+
+def _token_order(request: Request, order_id: str, token: str) -> tuple[Shop, Order]:
+    """The order behind a status link. A wrong token looks exactly like a missing order."""
     store = request.app.state.store
     order = store.get_order(order_id[:MAX_ID_LEN])
     shop = store.get_shop(order.shop_id) if order else None
-    if order is None or shop is None or not shop.published:
-        raise HTTPException(status_code=404, detail="We can't find that order.")
-    return _order_out(shop, order)
+    if (order is None or shop is None or not order.status_token or not token
+            or not hmac.compare_digest(order.status_token.encode(), token[:100].encode())):
+        raise HTTPException(status_code=404, detail=ORDER_NOT_FOUND)
+    return shop, order
+
+
+@router.get("/api/public/orders/{order_id}", response_model=WebOrderOut)
+def get_web_order(request: Request, order_id: str, t: str = "") -> WebOrderOut:
+    """The customer's status page /o/{id}?t={token}. Held orders past the shop's approval
+    timeout are expired first, so the page always shows the latest status."""
+    shop, order = _token_order(request, order_id, t)
+    commerce.expire_due_for_order(request.app.state.store, request.app.state.settings, order.id)
+    return _order_out(request, shop, request.app.state.store.get_order(order.id))
+
+
+@router.post("/api/public/orders/{order_id}/cancel", response_model=WebOrderOut)
+def cancel_web_order(request: Request, background: BackgroundTasks, order_id: str,
+                     t: str = "") -> WebOrderOut:
+    """The customer cancels from their status page, up to the shop's cutoff before pickup.
+    The owner (and the customer, if they left an email) are emailed."""
+    store, settings = request.app.state.store, request.app.state.settings
+    shop, order = _token_order(request, order_id, t)
+    commerce.expire_due_for_order(store, settings, order.id)
+    try:
+        order = approval.cancel(store, shop, order.id)
+    except approval.InvalidTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    background.add_task(notify.owner_cancelled, store, settings, order.id)
+    background.add_task(notify.customer_update, store, settings, order.id, "cancelled")
+    return _order_out(request, shop, order)
 
 
 def _script_json(data: dict[str, Any]) -> str:

@@ -90,7 +90,7 @@ export interface DraftResponse {
   draft_key?: string | null
 }
 
-export type OrderStatus = 'auto_approved' | 'pending_approval' | 'approved' | 'rejected' | 'ready' | 'done'
+export type OrderStatus = 'auto_approved' | 'pending_approval' | 'approved' | 'rejected' | 'ready' | 'done' | 'cancelled'
 export type Channel = 'mcp' | 'ucp' | 'dashboard' | 'web'
 
 export interface OrderItem {
@@ -126,6 +126,8 @@ export interface Order {
   total: Money
   customer_name: string
   customer_phone: string
+  /** Optional: the customer gets status emails. */
+  customer_email?: string
   pickup_at: string
   note: string
   channel: Channel
@@ -133,6 +135,8 @@ export interface Order {
   risk: Risk | null
   status: OrderStatus
   rejection_reason: string
+  /** Rejected automatically: the owner didn't decide in time. */
+  expired?: boolean
   unpriced_requests?: UnpricedRequest[]
   /** Why the owner must approve it (off-menu items, custom requests, limits, hours). */
   review_reasons?: string[]
@@ -192,16 +196,26 @@ export interface WebQuote {
 }
 
 /** What a customer sees about their order (buyer words, no risk details). */
-export type BuyerStatus = 'confirmed' | 'pending_owner_approval' | 'rejected' | 'ready' | 'done'
+export type BuyerStatus = 'confirmed' | 'pending_owner_approval' | 'rejected' | 'ready' | 'done' | 'cancelled'
 
 export interface WebOrder {
   order_id: string
   shop_slug: string
+  shop_name: string
   status: BuyerStatus
   message: string
   rejection_reason: string
+  /** Rejected because the shop didn't respond in time. */
+  expired: boolean
   items: PricedLine[]
   total: Money
   currency: string
   pickup_time: string
+  /** The customer's private link to their status page /o/{id}?t={token}. */
+  status_url: string
+  can_cancel: boolean
+  /** ISO time: cancelling closes then. */
+  cancel_until: string
+  /** Masked, e.g. "s***@gmail.com"; "" when no email was given. */
+  email_updates_to: string
 }

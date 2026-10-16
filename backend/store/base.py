@@ -1,6 +1,7 @@
 """Storage interface. LocalJsonStore for dev, FirestoreStore for prod."""
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from backend.models import AuditEvent, CheckoutSession, Order, OrderStatus, Product, Shop
 
@@ -69,6 +70,13 @@ class Store(ABC):
 
     @abstractmethod
     def save_order(self, order: Order) -> Order: ...
+
+    @abstractmethod
+    def transition_order(self, order_id: str, from_statuses: set[OrderStatus],
+                         update: dict[str, Any]) -> Order | None:
+        """Atomically: if the order's status is one of `from_statuses`, apply `update` (field ->
+        new value), save and return it; otherwise change nothing and return None. Approve,
+        reject, expire and cancel all go through this, so two decisions can't both win."""
 
     # UCP checkout sessions
     @abstractmethod

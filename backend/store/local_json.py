@@ -5,7 +5,7 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -153,6 +153,15 @@ class LocalJsonStore(Store):
 
     def save_order(self, order: Order) -> Order:
         return self._put("orders", order.id, order)
+
+    def transition_order(self, order_id: str, from_statuses: set[OrderStatus],
+                         update: dict[str, Any]) -> Order | None:
+        with self._lock:
+            order = self.get_order(order_id)
+            if order is None or order.status not in from_statuses:
+                return None
+            order = Order.model_validate({**order.model_dump(), **update})
+            return self._put("orders", order.id, order)
 
     # --- UCP checkout sessions ------------------------------------------
 

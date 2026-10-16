@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, ValidationError
 from agents.approval import service as approval
 from agents.risk import scorer as risk
 from backend.api.config import Settings, get_settings
-from backend import emails, mailer, owner_session
+from backend import emails, mailer, notify, owner_session
 from backend.audit import log_event
 from backend.external import mask_phone
 from backend.models import (
@@ -44,7 +44,9 @@ STATUS_MESSAGES = {
     OrderStatus.rejected: "The shop owner could not accept this order.",
     OrderStatus.ready: "Order is ready for pickup.",
     OrderStatus.done: "Order collected. Thank you!",
+    OrderStatus.cancelled: "This order was cancelled by the customer.",
 }
+EXPIRED_MESSAGE = "The shop didn't respond in time, so this order is cancelled."
 
 # Model status -> what a buyer (agent or customer) sees. Stored orders, the dashboard and UCP
 # keep the model statuses.
@@ -55,6 +57,7 @@ BUYER_STATUS = {
     OrderStatus.rejected: "rejected",
     OrderStatus.ready: "ready",
     OrderStatus.done: "done",
+    OrderStatus.cancelled: "cancelled",
 }
 
 # Review code -> plain sentence for the customer when their order is held. "risk" covers holds
@@ -381,6 +384,8 @@ def buyer_message(shop: Shop | None, order: Order) -> str:
     """The plain message a buyer agent sees for this order's current status."""
     if order.status == OrderStatus.pending_approval:
         return hold_message(shop, order.review_codes)
+    if order.expired:
+        return EXPIRED_MESSAGE
     return STATUS_MESSAGES[order.status]
 
 
@@ -446,6 +451,7 @@ async def place_order(
     channel: Channel | str = Channel.mcp,
     agent_name: str = "",
     *,
+    customer_email: str = "",
     actor: Actor | None = None,
     settings: Settings | None = None,
     gemini_client=None,
@@ -472,6 +478,12 @@ async def place_order(
         errors.append(f"customer_name is too long (max {MAX_NAME_LEN} characters).")
     if not (customer_phone or "").strip():
         errors.append("customer_phone is required.")
+    email = ""
+    if (customer_email or "").strip():
+        email = owner_session.normalize_email(customer_email) or ""
+        if not email:
+            errors.append("customer_email doesn't look like an email address. Leave it empty "
+                          "if you don't want email updates.")
     note = (note or "").strip()
     if len(note) > MAX_NOTE_LEN:
         errors.append(f"note is too long (max {MAX_NOTE_LEN} characters).")
@@ -489,10 +501,11 @@ async def place_order(
     previous = store.list_orders(shop_id)
     order = Order(
         shop_id=shop_id, items=quote.items, total=quote.total,
-        customer_name=customer_name, customer_phone=phone, pickup_at=pickup, note=note,
+        customer_name=customer_name, customer_phone=phone, customer_email=email,
+        pickup_at=pickup, note=note,
         channel=channel, agent_name=agent_name, status=OrderStatus.pending_approval,
         unpriced_requests=quote.unpriced, review_reasons=quote.review_reasons,
-        review_codes=quote.review_codes,
+        review_codes=quote.review_codes, status_token=notify.new_status_token(),
     )
     by = f" via {agent_name}" if agent_name else ""
     log_event(
@@ -535,6 +548,8 @@ async def place_order(
         _start_background(_explain_later(
             store, order.id, order.risk.model_copy(), note, settings, gemini_client))
     _start_background(_email_owner(store, order.id, settings))
+    if not held:
+        _start_background(notify.customer_update(store, settings, order.id, "confirmed"))
     return order
 
 
@@ -545,9 +560,34 @@ _background: set[asyncio.Task] = set()
 
 
 def _start_background(coro) -> None:
-    task = asyncio.get_running_loop().create_task(coro)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # called from a sync route's worker thread: just run it here
+        asyncio.run(coro)
+        return
+    task = loop.create_task(coro)
     _background.add(task)
     task.add_done_callback(_background.discard)
+
+
+def expire_due(store: Store, settings: Settings, shop: Shop,
+               now: datetime | None = None) -> list[Order]:
+    """Reject this shop's held orders that waited longer than its approval timeout, and email
+    their customers. Called before anyone reads orders (owner list, status page, agents) and
+    by the periodic sweep, so expiry doesn't depend on a timer running on Cloud Run."""
+    expired = approval.expire_overdue(store, shop, now)
+    for order in expired:
+        _start_background(notify.customer_update(store, settings, order.id, "expired"))
+    return expired
+
+
+def expire_due_for_order(store: Store, settings: Settings, order_id: str,
+                         now: datetime | None = None) -> None:
+    """expire_due for the shop of one order, before showing that order."""
+    order = store.get_order(order_id)
+    shop = store.get_shop(order.shop_id) if order else None
+    if order is not None and shop is not None and order.status == OrderStatus.pending_approval:
+        expire_due(store, settings, shop, now)
 
 
 async def wait_for_background_tasks() -> None:
@@ -607,8 +647,11 @@ async def _email_owner(store: Store, order_id: str, settings: Settings) -> None:
         log.exception("owner email failed for order %s", order_id)
 
 
-def get_order_status(store: Store, shop_id: str, order_id: str) -> dict[str, Any]:
+def get_order_status(store: Store, shop_id: str, order_id: str,
+                     settings: Settings | None = None) -> dict[str, Any]:
     """What a buyer agent may see. No risk details, so the scoring can't be gamed."""
+    approval.get_shop_order(store, shop_id, order_id)
+    expire_due_for_order(store, settings or get_settings(), order_id)
     order = approval.get_shop_order(store, shop_id, order_id)
     shop = store.get_shop(shop_id)
     return {

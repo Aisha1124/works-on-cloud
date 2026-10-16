@@ -32,7 +32,9 @@ const stampFor: Record<OrderStatus, { kind: StampKind; label: string }> = {
   rejected: { kind: 'rejected', label: 'Rejected' },
   ready: { kind: 'approved', label: 'Ready' },
   done: { kind: 'approved', label: 'Done' },
+  cancelled: { kind: 'rejected', label: 'Cancelled' },
 }
+const EXPIRED_STAMP = { kind: 'rejected' as StampKind, label: 'Expired' }
 
 function OrderCard({
   shopId,
@@ -52,7 +54,7 @@ function OrderCard({
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const held = order.status === 'pending_approval'
-  const stamp = stampFor[order.status]
+  const stamp = order.expired ? EXPIRED_STAMP : stampFor[order.status]
 
   async function decide(action: 'approve' | 'reject', e?: FormEvent) {
     e?.preventDefault()
@@ -104,6 +106,12 @@ function OrderCard({
               {order.customer_phone}
             </a>
           </dd>
+          {order.customer_email && (
+            <>
+              <dt className="text-muted">Email</dt>
+              <dd className="min-w-0 font-mono break-all">{order.customer_email}</dd>
+            </>
+          )}
           <dt className="text-muted">Pickup</dt>
           <dd className="font-mono font-semibold">{formatPickup(order.pickup_at)}</dd>
         </dl>
@@ -171,9 +179,10 @@ function OrderCard({
 
         {order.status === 'rejected' && order.rejection_reason && (
           <p className="mt-3 text-sm">
-            <span className="font-semibold">Reason given:</span> {order.rejection_reason}
+            <span className="font-semibold">{order.expired ? 'Closed automatically:' : 'Reason given:'}</span> {order.rejection_reason}
           </p>
         )}
+        {order.status === 'cancelled' && <p className="mt-3 text-sm font-semibold">The customer cancelled this order. No need to prepare it.</p>}
 
         {justDecided && !held && (
           <div className="mt-5 flex justify-center pb-2" role="status">

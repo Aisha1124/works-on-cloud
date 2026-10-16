@@ -186,6 +186,8 @@ async def test_normal_order_is_confirmed_and_audited(app, shop):
     order = app.state.store.get_order(placed["order_id"])
     assert order.channel == "mcp" and order.agent_name == "Gemini Shopper"
     assert order.status == "auto_approved"  # stored with the model status
+    # The buyer's private status page, to pass on to the person.
+    assert placed["status_url"] == f"http://localhost:8000/o/{order.id}?t={order.status_token}"
 
     events = app.state.store.list_audit_events(shop.id)
     call = next(e for e in events if e.action == "external_call")
@@ -194,6 +196,15 @@ async def test_normal_order_is_confirmed_and_audited(app, shop):
                             "agent_name": "Gemini Shopper", "ok": True, "error": ""}
     received = next(e for e in events if e.action == "order_received")
     assert received.actor == Actor.external_agent
+
+
+async def test_order_can_carry_a_customer_email(app, shop):
+    async with connect(app) as client:
+        placed = (await client.call_tool("place_pickup_order", order_args(
+            customer_email="Siti@Example.SG"))).structured_content
+        bad = await client.call_tool("place_pickup_order", order_args(customer_email="nope"))
+    assert app.state.store.get_order(placed["order_id"]).customer_email == "siti@example.sg"
+    assert bad.is_error and "customer_email" in text(bad)
 
 
 @pytest.mark.parametrize("change, reason, plain", [

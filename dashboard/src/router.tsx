@@ -7,6 +7,7 @@ import { LinkLanding } from './pages/LinkLanding'
 import { Login } from './pages/Login'
 import { NotFound } from './pages/NotFound'
 import { Onboarding } from './pages/Onboarding'
+import { OrderStatus } from './pages/OrderStatus'
 import { Orders } from './pages/Orders'
 import { PublicShop } from './pages/PublicShop'
 import { Styleguide } from './pages/Styleguide'
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
     ],
   },
   { path: '/s/:slug', element: <PublicShop /> },
+  { path: '/o/:id', element: <OrderStatus /> },
   { path: '/styleguide', element: <Styleguide /> },
   { path: '*', element: <NotFound /> },
 ])

@@ -1,9 +1,11 @@
 """Owner routes for orders and the audit log."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from agents.approval import service as approval
+from agents.commerce import service as commerce
+from backend import notify
 from backend.api.deps import require_owner
 from backend.models import AuditEvent, Order, OrderStatus
 
@@ -36,8 +38,11 @@ def _order_or_404(store, shop_id: str, order_id: str) -> Order:
 
 @router.get("/orders", response_model=list[Order])
 def list_orders(request: Request, shop_id: str, status: OrderStatus | None = None) -> list[Order]:
-    """Newest first. ?status=pending_approval shows what needs the owner."""
-    return _store(request, shop_id).list_orders(shop_id, status)
+    """Newest first. ?status=pending_approval shows what needs the owner. Held orders past the
+    shop's approval timeout are expired first."""
+    store = _store(request, shop_id)
+    commerce.expire_due(store, request.app.state.settings, store.get_shop(shop_id))
+    return store.list_orders(shop_id, status)
 
 
 @router.get("/orders/{order_id}", response_model=Order)
@@ -46,25 +51,33 @@ def get_order(request: Request, shop_id: str, order_id: str) -> Order:
 
 
 @router.post("/orders/{order_id}/approve", response_model=Order)
-def approve_order(request: Request, shop_id: str, order_id: str) -> Order:
+def approve_order(request: Request, background: BackgroundTasks, shop_id: str,
+                  order_id: str) -> Order:
     store = _store(request, shop_id)
     _order_or_404(store, shop_id, order_id)
     try:
-        return approval.approve(store, shop_id, order_id)
+        order = approval.approve(store, shop_id, order_id)
     except approval.InvalidTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background.add_task(notify.customer_update, store, request.app.state.settings, order.id,
+                        "confirmed")
+    return order
 
 
 @router.post("/orders/{order_id}/reject", response_model=Order)
 def reject_order(
-    request: Request, shop_id: str, order_id: str, body: RejectBody | None = None
+    request: Request, background: BackgroundTasks, shop_id: str, order_id: str,
+    body: RejectBody | None = None,
 ) -> Order:
     store = _store(request, shop_id)
     _order_or_404(store, shop_id, order_id)
     try:
-        return approval.reject(store, shop_id, order_id, body.reason if body else "")
+        order = approval.reject(store, shop_id, order_id, body.reason if body else "")
     except approval.InvalidTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background.add_task(notify.customer_update, store, request.app.state.settings, order.id,
+                        "rejected")
+    return order
 
 
 @router.get("/audit", response_model=AuditPage)

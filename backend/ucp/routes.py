@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agents.commerce import service as commerce
+from backend import notify
 from backend.api.config import Settings
 from backend.external import mask_phone
 from backend.external import (
@@ -396,6 +397,11 @@ def ucp_router() -> APIRouter:
                 status = "complete_in_progress"
                 messages.append(message("info", "held_for_approval",
                                         commerce.buyer_message(shop, order)))
+            elif order.status == OrderStatus.cancelled:
+                status = "canceled"
+                messages.append(message("error", "canceled_by_buyer",
+                                        "The buyer cancelled this order from its status page.",
+                                        None, "unrecoverable"))
             else:
                 status = "canceled"
                 why = f": {order.rejection_reason}" if order.rejection_reason else "."
@@ -438,11 +444,12 @@ def ucp_router() -> APIRouter:
                 "payment": "Pay at pickup",
                 "order_id": order.id if order else None,
                 "order_status": order.status.value if order else None,
+                # The buyer's private status page (check and cancel the order).
+                "status_url": notify.status_url(settings, order) if order else None,
             },
         }
         if order is not None and status == "completed":
-            out["order"] = {"id": order.id, "permalink_url": (
-                f"{base_url(settings)}{API_PREFIX}/checkout-sessions/{session.id}")}
+            out["order"] = {"id": order.id, "permalink_url": notify.status_url(settings, order)}
         messages += extra or []
         if messages:
             out["messages"] = messages
@@ -484,6 +491,9 @@ def ucp_router() -> APIRouter:
     async def get_checkout(request: Request, checkout_id: str):
         async def body(h):
             session = load(request, checkout_id, h)
+            if session.order_id:  # a held order may have expired meanwhile
+                commerce.expire_due_for_order(request.app.state.store,
+                                              request.app.state.settings, session.order_id)
             return session.shop_id, render(request, session)
 
         return await respond(request, "checkout.get", header_agent_name(request), body)
@@ -542,7 +552,7 @@ def ucp_router() -> APIRouter:
                     store, session.shop_id, _commerce_items(store, session.lines),
                     f"{buyer.first_name} {buyer.last_name}".strip(), buyer.phone_number,
                     session.pickup_at, session.note, Channel.ucp, session.agent_name,
-                    settings=settings)
+                    customer_email=buyer.email, settings=settings)
             except commerce.OrderValidationError as exc:
                 return session.shop_id, render(request, session, [
                     message("error", "invalid", e) for e in exc.errors])

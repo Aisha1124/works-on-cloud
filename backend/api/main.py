@@ -1,9 +1,12 @@
 """FastAPI app: REST API, /mcp, UCP routes, and the built dashboard."""
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from agents.commerce import service as commerce
 from backend.api.config import Settings, get_settings
 from backend.api.deps import AUTH_FAIL_LIMIT, AUTH_FAIL_WINDOW_S
 from backend.api.routes import health, orders, owner, products, public, shops
@@ -17,6 +20,26 @@ from backend.mcp_server import create_mcp_server, mcp_route
 from backend.store import get_store
 from backend.ucp import ucp_router
 
+log = logging.getLogger(__name__)
+SWEEP_EVERY_S = 300
+
+
+def sweep_once(store, settings) -> None:
+    """Housekeeping over every shop: expire held orders past their approval timeout."""
+    for shop in store.list_shops():
+        commerce.expire_due(store, settings, shop)
+
+
+async def sweep_forever(store, settings) -> None:
+    """Every 5 minutes while the instance runs. On Cloud Run this only runs while requests
+    keep the instance busy, so every read of an order also expires it when due (lazy)."""
+    while True:
+        try:
+            sweep_once(store, settings)
+        except Exception:  # never let housekeeping take the server down
+            log.exception("sweep failed")
+        await asyncio.sleep(SWEEP_EVERY_S)
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
@@ -26,8 +49,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with mcp.session_manager.run():
-            yield
+        sweeper = asyncio.create_task(sweep_forever(store, settings))
+        try:
+            async with mcp.session_manager.run():
+                yield
+        finally:
+            sweeper.cancel()
 
     app = FastAPI(title="KampungCart", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings

@@ -65,6 +65,9 @@ class FirestoreStore(Store):
     def save_order(self, order: Order) -> Order:
         raise NotImplementedError(_MSG)
 
+    def transition_order(self, order_id, from_statuses, update) -> Order | None:
+        raise NotImplementedError(_MSG)
+
     def get_checkout(self, checkout_id: str) -> CheckoutSession | None:
         raise NotImplementedError(_MSG)
 
