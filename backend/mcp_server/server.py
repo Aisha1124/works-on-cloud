@@ -24,7 +24,7 @@ from agents.commerce import service as commerce
 from backend import notify
 from backend.api.config import Settings
 from backend.external import (
-    GENERIC_ERROR, MAX_ID_LEN, MAX_QUERY_LEN, MAX_SLUG_LEN, RATE_LIMIT_MESSAGE, RateLimiter,
+    GENERIC_ERROR, MAX_ID_LEN, MAX_QUERY_LEN, MAX_SLUG_LEN, RATE_LIMIT_MESSAGE, StoreRateLimiter,
     ShopNotFound, area_of, audit_external_call, clean_agent_name, client_key, published_shop,
     published_shops,
 )
@@ -174,9 +174,9 @@ def _error(message: str) -> CallToolResult:
 
 
 def create_mcp_server(store: Store, settings: Settings,
-                      order_limiter: RateLimiter | None = None) -> MCPServer:
+                      order_limiter: StoreRateLimiter | None = None) -> MCPServer:
     """A new server bound to this app's store. One per FastAPI app (tests build many)."""
-    limiter = order_limiter or RateLimiter(10, 60.0)
+    limiter = order_limiter or StoreRateLimiter(store, "orders", 10, 60.0)
     mcp = MCPServer("KampungCart", instructions=INSTRUCTIONS, version="0.2.0")
 
     def caller(ctx: Context, given: str | None = None) -> tuple[str, str]:

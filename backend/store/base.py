@@ -48,6 +48,13 @@ class Store(ABC):
         """Remove and return it, atomically: a single-use secret can only be used once."""
 
     @abstractmethod
+    def take_rate(self, key_hash: str, limit: int, window_s: float, now: float,
+                  consume: bool = True) -> bool:
+        """Rate limits shared by all instances. A window starts at the key's first event and
+        lasts window_s seconds (now is a Unix time). Atomically: True if fewer than `limit`
+        events happened in the current window (and, when consume, count this one)."""
+
+    @abstractmethod
     def claim(self, collection: str, key_hash: str, data: dict) -> dict | None:
         """Atomically create the record if there is none and return None; if one exists,
         change nothing and return it. Used for idempotency keys."""

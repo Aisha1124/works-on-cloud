@@ -121,6 +121,22 @@ class LocalJsonStore(Store):
                 self._write(collection, rows)
         return row
 
+    def take_rate(self, key_hash: str, limit: int, window_s: float, now: float,
+                  consume: bool = True) -> bool:
+        with self._lock:
+            rows = self._read("rate_limits")
+            row = rows.get(key_hash)
+            if row is None or now - row["start"] >= window_s:
+                row = {"start": now, "count": 0, "expires_at": now + window_s}
+            if row["count"] >= limit:
+                return False
+            if consume:
+                row["count"] += 1
+                rows = {k: r for k, r in rows.items() if r["expires_at"] > now}  # tidy up
+                rows[key_hash] = row
+                self._write("rate_limits", rows)
+            return True
+
     def claim(self, collection: str, key_hash: str, data: dict) -> dict | None:
         with self._lock:
             rows = self._read(collection)

@@ -15,7 +15,7 @@ from backend.api.routes.shops import (
     DRAFT_LIMIT, DRAFT_WINDOW_S, VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S,
 )
 from backend.api.spa import spa_router
-from backend.external import ORDER_LIMIT, ORDER_WINDOW_S, RateLimiter
+from backend.external import ORDER_LIMIT, ORDER_WINDOW_S, StoreRateLimiter
 from backend.mcp_server import create_mcp_server, mcp_route
 from backend.store import get_store
 from backend.ucp import ucp_router
@@ -44,7 +44,11 @@ async def sweep_forever(store, settings) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     store = get_store(settings)
-    order_limiter = RateLimiter(ORDER_LIMIT, ORDER_WINDOW_S)  # shared by MCP and UCP
+    # Rate limits live in the store, so all Cloud Run instances share them.
+    def limiter(name: str, limit: int, window_s: float) -> StoreRateLimiter:
+        return StoreRateLimiter(store, name, limit, window_s)
+
+    order_limiter = limiter("orders", ORDER_LIMIT, ORDER_WINDOW_S)  # shared by MCP and UCP
     mcp = create_mcp_server(store, settings, order_limiter)
 
     @asynccontextmanager
@@ -61,11 +65,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.store = store
     app.state.mcp = mcp
     app.state.order_limiter = order_limiter  # MCP, UCP and the shop page
-    app.state.auth_limiter = RateLimiter(AUTH_FAIL_LIMIT, AUTH_FAIL_WINDOW_S)  # wrong owner keys
-    app.state.draft_limiter = RateLimiter(DRAFT_LIMIT, DRAFT_WINDOW_S)  # new menu photo reads
-    app.state.link_ip_limiter = RateLimiter(LINK_IP_LIMIT, LINK_WINDOW_S)  # sign-in emails per client
-    app.state.link_email_limiter = RateLimiter(LINK_EMAIL_LIMIT, LINK_WINDOW_S)  # ... per address
-    app.state.verify_limiter = RateLimiter(VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S)  # per shop
+    app.state.auth_limiter = limiter("auth_fail", AUTH_FAIL_LIMIT, AUTH_FAIL_WINDOW_S)  # wrong keys
+    app.state.draft_limiter = limiter("drafts", DRAFT_LIMIT, DRAFT_WINDOW_S)  # menu photo reads
+    app.state.link_ip_limiter = limiter("link_ip", LINK_IP_LIMIT, LINK_WINDOW_S)  # per client
+    app.state.link_email_limiter = limiter("link_email", LINK_EMAIL_LIMIT, LINK_WINDOW_S)
+    app.state.verify_limiter = limiter("verify", VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S)
 
     app.include_router(health.router)
     app.include_router(owner.router)

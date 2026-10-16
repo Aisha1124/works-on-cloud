@@ -68,6 +68,28 @@ def test_orders_newest_first_and_status_filter(store):
     assert store.get_order(new.id).status == OrderStatus.approved
 
 
+def test_rate_limit_window_starts_at_first_hit(store):
+    assert [store.take_rate("k", 2, 60, 1000 + i) for i in range(3)] == [True, True, False]
+    assert store.take_rate("k", 2, 60, 1059, consume=False) is False  # still blocked
+    assert store.take_rate("other", 2, 60, 1001) is True  # keys are separate
+    assert store.take_rate("k", 2, 60, 1060) is True  # new window
+    assert store.take_rate("k", 2, 60, 1061, consume=False) is True  # peeking counts nothing
+    assert store.take_rate("k", 2, 60, 1061) is True
+    assert store.take_rate("k", 2, 60, 1062) is False
+
+
+def test_store_rate_limits_are_shared_between_instances(tmp_path):
+    from backend.external import StoreRateLimiter
+
+    clock = iter(range(100, 200)).__next__
+    first = StoreRateLimiter(LocalJsonStore(tmp_path / "d"), "orders", 2, 60, clock=clock)
+    second = StoreRateLimiter(LocalJsonStore(tmp_path / "d"), "orders", 2, 60, clock=clock)
+    assert first.allow("203.0.113.7") and second.allow("203.0.113.7")
+    assert not first.allow("203.0.113.7") and second.blocked("203.0.113.7")
+    # Keys are stored hashed: no IP address in the file.
+    assert "203.0.113.7" not in (tmp_path / "d" / "rate_limits.json").read_text(encoding="utf-8")
+
+
 def test_get_store_picks_backend(tmp_path):
     local = get_store(Settings(_env_file=None, data_dir=tmp_path))
     assert isinstance(local, LocalJsonStore)

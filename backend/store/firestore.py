@@ -47,6 +47,9 @@ class FirestoreStore(Store):
     def claim(self, collection: str, key_hash: str, data: dict) -> dict | None:
         raise NotImplementedError(_MSG)
 
+    def take_rate(self, key_hash, limit, window_s, now, consume=True) -> bool:
+        raise NotImplementedError(_MSG)
+
     def get_product(self, product_id: str) -> Product | None:
         raise NotImplementedError(_MSG)
 

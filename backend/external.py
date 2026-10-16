@@ -4,6 +4,7 @@ Only plumbing lives here: which shops are visible, per-client rate limits, input
 the audit record of every external call. Business logic stays in agents/commerce.
 """
 
+import hashlib
 import re
 import threading
 import time
@@ -96,6 +97,31 @@ class RateLimiter:
             while hits and now - hits[0] >= self.window_s:
                 hits.popleft()
             return bool(hits) and len(hits) >= self.limit
+
+
+class StoreRateLimiter:
+    """Same API as RateLimiter, but the counts live in the store (Firestore in production), so
+    every Cloud Run instance shares them and a restart doesn't reset them. Keys (IPs, emails)
+    are stored hashed. The window starts at a key's first hit."""
+
+    def __init__(self, store: Store, name: str, limit: int, window_s: float, clock=time.time):
+        self.store = store
+        self.name = name
+        self.limit = limit
+        self.window_s = window_s
+        self._clock = clock
+
+    def _key(self, key: str) -> str:
+        return hashlib.sha256(f"{self.name}:{key}".encode()).hexdigest()
+
+    def allow(self, key: str) -> bool:
+        """Count one event; False (and nothing counted) when the limit is used up."""
+        return self.store.take_rate(self._key(key), self.limit, self.window_s, self._clock())
+
+    def blocked(self, key: str) -> bool:
+        """True if `key` has used up its limit. Records nothing."""
+        return not self.store.take_rate(self._key(key), self.limit, self.window_s,
+                                        self._clock(), consume=False)
 
 
 ORDER_LIMIT = 10  # orders per client per minute
