@@ -209,7 +209,22 @@ def test_owner_review_reasons(store, demo):
         "Total S$3630.00 is above the S$150.00 auto-approve limit",
         "Pickup Mon 19 Oct 10:00 is outside opening hours (Tue-Sun 9am-6pm)",
     ]
+    assert q.review_codes == ["custom_request", "unusual_qty", "over_limit", "closed"]
     assert q.items[0].request == "Gift wrap"
+    assert commerce.hold_message(demo.shop, q.review_codes) == (
+        "Your order has a custom request that the owner needs to confirm. "
+        "This is a bigger quantity than the shop usually makes. "
+        "Orders over S$150.00 need the owner's OK. "
+        "The shop is closed at your pickup time. "
+        "Your order has been sent to the owner for approval.")
+
+
+def test_hold_message_for_risk_only_and_repeated_codes(demo):
+    assert commerce.hold_message(demo.shop, []) == (
+        "The owner checks some orders personally before confirming them. "
+        "Your order has been sent to the owner for approval.")
+    assert commerce.hold_sentences(demo.shop, ["unusual_qty", "unusual_qty"]) == [
+        "This is a bigger quantity than the shop usually makes."]
 
 
 @pytest.mark.parametrize("item, message", [

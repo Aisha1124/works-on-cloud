@@ -36,7 +36,6 @@ from backend.ucp.profile import (
 log = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 64 * 1024
-HELD_MESSAGE = "Held for owner approval"
 COMPLETED = {OrderStatus.auto_approved, OrderStatus.approved, OrderStatus.ready,
              OrderStatus.done}
 
@@ -394,7 +393,8 @@ def ucp_router() -> APIRouter:
                 status = "completed"
             elif order.status == OrderStatus.pending_approval:
                 status = "complete_in_progress"
-                messages.append(message("info", "held_for_approval", HELD_MESSAGE))
+                messages.append(message("info", "held_for_approval",
+                                        commerce.buyer_message(shop, order)))
             else:
                 status = "canceled"
                 why = f": {order.rejection_reason}" if order.rejection_reason else "."

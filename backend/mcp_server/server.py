@@ -32,7 +32,6 @@ from backend.timeutil import to_sg
 
 log = logging.getLogger(__name__)
 
-HELD_MESSAGE = "Held for owner approval"
 
 INSTRUCTIONS = (
     "KampungCart lists small Singapore shops (home bakers, hawker stalls, heartland shops). "
@@ -117,7 +116,7 @@ def _unpriced_out(unpriced) -> list[dict[str, Any]]:
             for u in unpriced]
 
 
-def _quote_out(quote: commerce.Quote) -> dict[str, Any]:
+def _quote_out(shop: Shop, quote: commerce.Quote) -> dict[str, Any]:
     return {
         "items": [{"product_id": i.product_id, "name": i.name, "variant": i.variant,
                    "options": i.options, "qty": i.qty, "unit_price": _money(i.unit_price),
@@ -128,6 +127,9 @@ def _quote_out(quote: commerce.Quote) -> dict[str, Any]:
         "currency": quote.currency,
         "needs_owner_approval": bool(quote.review_reasons),
         "approval_reasons": quote.review_reasons,
+        "approval_message": (" ".join(commerce.hold_sentences(shop, quote.review_codes))
+                             + " The owner would need to approve this order."
+                             if quote.review_reasons else ""),
         "payment": "Pay at pickup",
     }
 
@@ -265,7 +267,7 @@ def create_mcp_server(store: Store, settings: Settings,
         def body(shop: Shop):
             quote = commerce.get_quote(store, shop.id, _items(items), channel=Channel.mcp,
                                        agent_name=agent, pickup_at=pickup_time)
-            return _quote_out(quote)
+            return _quote_out(shop, quote)
 
         return await run("get_quote", agent, by_slug(shop_slug), body)
 
@@ -300,7 +302,7 @@ def create_mcp_server(store: Store, settings: Settings,
                    "subtotal": _money(order.total), "currency": shop.currency,
                    "unpriced_items": _unpriced_out(order.unpriced_requests),
                    "pickup_time": to_sg(order.pickup_at).isoformat(),
-                   "message": HELD_MESSAGE if held else commerce.STATUS_MESSAGES[order.status],
+                   "message": commerce.buyer_message(shop, order),
                    "payment": "Pay at pickup"}
             if held:
                 # Only the deterministic menu/limit reasons. Risk scoring stays private so

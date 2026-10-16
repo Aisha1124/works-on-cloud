@@ -196,23 +196,28 @@ async def test_normal_order_is_confirmed_and_audited(app, shop):
     assert received.actor == Actor.external_agent
 
 
-@pytest.mark.parametrize("change, reason", [
+@pytest.mark.parametrize("change, reason, plain", [
     ({"items": [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 1},
-                {"name": "Durian Cake", "qty": 1}]}, "'Durian Cake' is not on the menu"),
+                {"name": "Durian Cake", "qty": 1}]}, "'Durian Cake' is not on the menu",
+     "Some items aren't on the shop's menu, so the owner needs to price them."),
     ({"items": [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 121}]},
-     "above this shop's usual maximum"),
-    ({"pickup_time": in_two_days(hour=22)}, "outside opening hours"),
+     "above this shop's usual maximum", "This is a bigger quantity than the shop usually makes."),
+    ({"pickup_time": in_two_days(hour=22)}, "outside opening hours",
+     "The shop is closed at your pickup time."),
     ({"items": [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 1,
-                 "request": "Write Happy Birthday on the box"}]}, "Custom request for Kuih Lapis"),
+                 "request": "Write Happy Birthday on the box"}]}, "Custom request for Kuih Lapis",
+     "Your order has a custom request that the owner needs to confirm."),
 ], ids=["unknown-item", "qty-above-threshold", "outside-hours", "custom-request"])
-async def test_unusual_order_is_pending_owner_approval(app, shop, change, reason):
+async def test_unusual_order_is_pending_owner_approval(app, shop, change, reason, plain):
     async with connect(app) as client:
         placed = (await client.call_tool("place_pickup_order",
                                          order_args(**change))).structured_content
         status = (await client.call_tool("get_order_status",
                                          {"order_id": placed["order_id"]})).structured_content
     assert placed["status"] == "pending_owner_approval"
-    assert placed["message"] == "Held for owner approval"
+    assert placed["message"].startswith(plain)
+    assert placed["message"].endswith("Your order has been sent to the owner for approval.")
+    assert status["message"] == placed["message"]
     assert any(reason in r for r in placed["approval_reasons"])
     assert "risk" not in placed
     assert status["status"] == "pending_owner_approval"

@@ -44,6 +44,18 @@ STATUS_MESSAGES = {
     OrderStatus.done: "Order collected. Thank you!",
 }
 
+# Review code -> plain sentence for the customer when their order is held. "risk" covers holds
+# from the risk score alone and says nothing about how scoring works.
+HOLD_SENTENCES = {
+    "closed": "The shop is closed at your pickup time.",
+    "not_on_menu": "Some items aren't on the shop's menu, so the owner needs to price them.",
+    "custom_request": "Your order has a custom request that the owner needs to confirm.",
+    "unusual_qty": "This is a bigger quantity than the shop usually makes.",
+    "over_limit": "Orders over S${limit:.2f} need the owner's OK.",
+    "risk": "The owner checks some orders personally before confirming them.",
+}
+SENT_TO_OWNER = "Your order has been sent to the owner for approval."
+
 
 class OrderValidationError(ValueError):
     """One or more problems with the order. str(exc) is safe to show a buyer agent."""
@@ -70,6 +82,7 @@ class Quote(BaseModel):
     mismatches: list[str] = Field(default_factory=list)
     unpriced: list[UnpricedRequest] = Field(default_factory=list)  # not on the menu, no price
     review_reasons: list[str] = Field(default_factory=list)  # why the owner must approve
+    review_codes: list[str] = Field(default_factory=list)  # HOLD_SENTENCES keys, same order
 
 
 def _money(value: Decimal) -> Decimal:
@@ -198,7 +211,7 @@ def build_quote(store: Store, shop_id: str, items: list[Any]) -> tuple[Quote, li
         product = store.get_product(item.product_id)
         if product is None or product.shop_id != shop_id:
             errors.append(f"Item {n}: no product with id '{item.product_id}' in this shop. "
-                          "Use search_products to find product ids.")
+                          "Use get_menu (MCP) or catalog search (UCP) to find product ids.")
             continue
         if not product.available:
             errors.append(f"Item {n}: {product.name} is not available right now.")
@@ -292,28 +305,68 @@ def _quote_with_unpriced(store: Store, shop_id: str,
     return quote, products
 
 
-def owner_review_reasons(shop: Shop, quote: Quote, products: list[Product],
-                         pickup: datetime | None = None) -> list[str]:
-    """Deterministic reasons the owner must approve the order, whatever the risk score:
-    items not on the menu, custom requests, unusual quantities, a total above the shop's
-    auto-approve limit, and a pickup outside opening hours (when a pickup time is given)."""
-    reasons = [f"{u.qty} x '{u.name}' is not on the menu; the owner will price it"
-               for u in quote.unpriced]
-    reasons += [f"Custom request for {line.name}; the owner must confirm it"
-                for line in quote.items if line.request]
+def review_checks(shop: Shop, quote: Quote, products: list[Product],
+                  pickup: datetime | None = None) -> list[tuple[str, str]]:
+    """Deterministic reasons the owner must approve the order, whatever the risk score, as
+    (code, owner-facing text): items not on the menu, custom requests, unusual quantities, a
+    total above the shop's auto-approve limit, and a pickup outside opening hours (when a
+    pickup time is given). Codes are HOLD_SENTENCES keys."""
+    checks = [("not_on_menu", f"{u.qty} x '{u.name}' is not on the menu; the owner will price it")
+              for u in quote.unpriced]
+    checks += [("custom_request", f"Custom request for {line.name}; the owner must confirm it")
+               for line in quote.items if line.request]
     for product, line in zip(products, quote.items, strict=True):
         biggest = risk.unusual_qty(product, line.qty)
         if biggest is not None:
-            reasons.append(f"Quantity {line.qty} x {line.name} is above this shop's usual "
-                           f"maximum (3x its largest pack of {biggest})")
+            checks.append(("unusual_qty",
+                           f"Quantity {line.qty} x {line.name} is above this shop's usual "
+                           f"maximum (3x its largest pack of {biggest})"))
     if quote.total > shop.auto_approve_limit:
-        reasons.append(f"Total S${quote.total:.2f} is above the "
-                       f"S${shop.auto_approve_limit:.2f} auto-approve limit")
+        checks.append(("over_limit", f"Total S${quote.total:.2f} is above the "
+                                     f"S${shop.auto_approve_limit:.2f} auto-approve limit"))
     hours = risk.parse_hours(shop.hours) if pickup and shop.hours.strip() else None
     if hours is not None and not risk.is_open(hours, pickup):
-        reasons.append(f"Pickup {to_sg(pickup):%a %d %b %H:%M} is outside opening hours "
-                       f"({shop.hours})")
-    return reasons
+        checks.append(("closed", f"Pickup {to_sg(pickup):%a %d %b %H:%M} is outside opening "
+                                 f"hours ({shop.hours})"))
+    return checks
+
+
+def owner_review_reasons(shop: Shop, quote: Quote, products: list[Product],
+                         pickup: datetime | None = None) -> list[str]:
+    """The owner-facing text of review_checks."""
+    return [text for _, text in review_checks(shop, quote, products, pickup)]
+
+
+def _review(shop: Shop, quote: Quote, products: list[Product],
+            pickup: datetime | None) -> None:
+    checks = review_checks(shop, quote, products, pickup)
+    quote.review_codes = [code for code, _ in checks]
+    quote.review_reasons = [text for _, text in checks]
+
+
+def hold_sentences(shop: Shop | None, codes: list[str]) -> list[str]:
+    """Plain customer sentences for these review codes, once each, in order. No codes means
+    the hold came from the risk score alone."""
+    limit = shop.auto_approve_limit if shop else Decimal("150")
+    out: list[str] = []
+    for code in codes or ["risk"]:
+        sentence = HOLD_SENTENCES.get(code, HOLD_SENTENCES["risk"]).format(limit=limit)
+        if sentence not in out:
+            out.append(sentence)
+    return out
+
+
+def hold_message(shop: Shop | None, codes: list[str]) -> str:
+    """e.g. 'The shop is closed at your pickup time. Your order has been sent to the owner
+    for approval.'"""
+    return " ".join([*hold_sentences(shop, codes), SENT_TO_OWNER])
+
+
+def buyer_message(shop: Shop | None, order: Order) -> str:
+    """The plain message a buyer agent sees for this order's current status."""
+    if order.status == OrderStatus.pending_approval:
+        return hold_message(shop, order.review_codes)
+    return STATUS_MESSAGES[order.status]
 
 
 def _require_shop(store: Store, shop_id: str):
@@ -347,7 +400,7 @@ def get_quote(
     shop = _require_shop(store, shop_id)
     pickup = _parse_pickup(pickup_at) if pickup_at else None
     quote, products = _quote_with_unpriced(store, shop_id, items)
-    quote.review_reasons = owner_review_reasons(shop, quote, products, pickup)
+    _review(shop, quote, products, pickup)
     _log_quote(store, shop_id, quote, actor or _default_actor(Channel(channel)),
                agent_name, Channel(channel))
     return quote
@@ -414,7 +467,7 @@ async def place_order(
         raise OrderValidationError(errors)
 
     quote, products = _quote_with_unpriced(store, shop_id, items)
-    quote.review_reasons = owner_review_reasons(shop, quote, products, pickup)
+    _review(shop, quote, products, pickup)
     _log_quote(store, shop_id, quote, actor, agent_name, channel)
 
     phone = risk.normalize_sg_phone(customer_phone) or customer_phone.strip()
@@ -424,6 +477,7 @@ async def place_order(
         customer_name=customer_name, customer_phone=phone, pickup_at=pickup, note=note,
         channel=channel, agent_name=agent_name, status=OrderStatus.pending_approval,
         unpriced_requests=quote.unpriced, review_reasons=quote.review_reasons,
+        review_codes=quote.review_codes,
     )
     by = f" via {agent_name}" if agent_name else ""
     log_event(
@@ -519,7 +573,7 @@ def get_order_status(store: Store, shop_id: str, order_id: str) -> dict[str, Any
     return {
         "order_id": order.id,
         "status": order.status.value,
-        "message": STATUS_MESSAGES[order.status],
+        "message": buyer_message(shop, order),
         "rejection_reason": order.rejection_reason,
         "items": [line.model_dump(mode="json") for line in order.items],
         "unpriced_items": [u.model_dump(mode="json") for u in order.unpriced_requests],

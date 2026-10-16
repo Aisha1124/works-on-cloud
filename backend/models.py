@@ -133,6 +133,7 @@ class Order(BaseModel):
     rejection_reason: str = ""
     unpriced_requests: list[UnpricedRequest] = Field(default_factory=list)
     review_reasons: list[str] = Field(default_factory=list)  # why the owner must look at it
+    review_codes: list[str] = Field(default_factory=list)  # commerce.HOLD_SENTENCES keys
     created_at: datetime = Field(default_factory=utc_now)
 
 

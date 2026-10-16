@@ -31,7 +31,7 @@ It is **not** a full or certified UCP implementation.
 |---|---|---|
 | (no order yet) | `incomplete` / `ready_for_complete` | what is missing |
 | `auto_approved`, `approved`, `ready`, `done` | `completed` + `order` | none |
-| `pending_approval` (held for the owner) | `complete_in_progress` | `info` `held_for_approval`: "Held for owner approval" |
+| `pending_approval` (held for the owner) | `complete_in_progress` | `info` `held_for_approval`: a plain reason plus "Your order has been sent to the owner for approval." (e.g. "The shop is closed at your pickup time. ...") |
 | `rejected` | `canceled` | `error` `rejected_by_shop` with the owner's reason |
 
 The agent polls `GET /ucp/v1/checkout-sessions/{id}` to see the owner's decision.
