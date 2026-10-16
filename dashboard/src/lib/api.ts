@@ -40,9 +40,12 @@ function friendly(status: number, body: unknown): string {
 
 export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', json, form, owner = true, timeoutMs = 15000, signal } = opts
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  // X-Requested-With: the server only accepts cookie-signed changes from this dashboard (CSRF guard).
+  const headers: Record<string, string> = { Accept: 'application/json', 'X-Requested-With': 'kampungcart' }
+  // Owner routes: a stored draft/backup key if this tab has one, else the session cookie.
   const shopId = owner ? shopIdOf(path) : null
-  if (shopId) headers['X-Owner-Key'] = getOwnerKey(shopId) ?? ''
+  const key = shopId ? getOwnerKey(shopId) : null
+  if (key) headers['X-Owner-Key'] = key
   if (json !== undefined) headers['Content-Type'] = 'application/json'
 
   const timeout = AbortSignal.timeout(timeoutMs)

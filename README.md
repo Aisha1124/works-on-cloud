@@ -44,24 +44,46 @@ Note: the repo path may contain `&`. npm's `.cmd` shims break on such paths, so 
 npm scripts call each tool with `node ./node_modules/...` directly. Keep that pattern when adding scripts.
 
 ## Shop owners
-- **New shop:** drop a menu photo on the home page (no key needed), fix anything, tap **Go live**.
-  Going live creates the shop's owner key. It is shown once, with the shop link and a
-  downloadable QR code. Save it: it is needed to manage orders.
-- **Come back later:** **Shop owner login** (top right) → paste the owner key → that shop's
-  orders, approvals, menu and audit log.
-- **Sample shop:** `mak-kuih` is seeded at startup. Its owner key is `OWNER_KEY`.
+- **New shop:** drop a menu photo on the home page (free, no account needed), fix anything, tap
+  **Go live** and enter the shop name and your email. The shop is live straight away and you are
+  signed in. We email a "confirm your email" link; the dashboard reminds you until you tap it.
+  The success screen shows the shop link, a downloadable QR code and a **backup key** (shown once).
+- **Come back later:** **Shop owner login** (top right) → your email → tap the one-time link in
+  the email → that shop's orders, approvals, menu and audit log. No password.
+  **Use backup key instead** works if email doesn't.
+- **Order emails:** every new order (shop page, AI assistant over MCP, UCP agent) emails the owner:
+  items, SGD total, pickup time, the customer's first name, the masked phone (`****4567`) and the
+  channel. Held orders add the plain-English reason and a **Review order** button that signs the
+  owner in.
+- **Sample shop:** `mak-kuih` is seeded at startup. Judges can sign in with the backup key
+  `OWNER_KEY` (Shop owner login → Use backup key instead). Set `SAMPLE_OWNER_EMAIL` to receive its
+  order emails and sign in by email.
 
 ## Security
 - **One key per shop.** Owner keys are 256-bit random tokens (`kc_…`). Only a SHA-256 hash is
   stored, in its own collection, never on the shop record, so no API response can carry it. The
   plain key is shown once, when the shop goes live; the temporary draft key from the photo upload
   stops working at that moment.
-- **Every owner action needs the key, and a key opens only its own shop.** All routes under
-  `/api/shops/{shop_id}` check that shop's key. A key for another shop, an unknown shop and a wrong
-  key all get the same 401. There is no endpoint that lists all shops.
-- **Rate limits** (per client IP, in memory): 10 wrong owner keys per 5 minutes (login and owner
-  routes share the count, then 429), 5 new menu-photo reads per 10 minutes, and 10 orders a minute
-  across MCP, UCP and the shop page.
+- **Every owner action needs a sign-in, and each sign-in opens only its own shop.** All routes
+  under `/api/shops/{shop_id}` accept either that shop's key or a session for that shop. A key or
+  session for another shop, an unknown shop and a wrong key all get a 401. There is no endpoint
+  that lists all shops.
+- **Email sign-in.** Sign-in links are single use, expire after 15 minutes and open one shop.
+  Only a hash of the link's token is stored. Opening the link changes nothing; the owner taps
+  "Open my dashboard", so email scanners that follow links can't use it up. The "Review order"
+  button in an order email is the same kind of link but lasts 24 hours, because owners read order
+  emails later. The answer to "send me a link" is the same whether or not the email has a shop.
+- **Sessions** are a random token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` on HTTPS),
+  stored as a hash, valid 30 days, ended by **Sign out**. Cookie-signed changes also need the
+  dashboard's `X-Requested-With` header (CSRF guard).
+- **Rate limits** (per client IP, in memory): 10 wrong owner keys or bad sign-in links per 5
+  minutes (then 429), 5 sign-in emails per IP and 3 per email address per 15 minutes, 3 "send the
+  confirm link again" per shop per 15 minutes, 5 new menu-photo reads per 10 minutes, and 10
+  orders a minute across MCP, UCP and the shop page.
+- **Owner emails stay private.** The owner's email is never in the public shop page, MCP or UCP
+  responses. Logs only show it masked (`s***@gmail.com`) and never contain sign-in links.
+- **Email never blocks an order.** Order emails are sent after the order is saved, in the
+  background. If sending fails, the order stays, the error is logged and the audit log says so.
 - **Text from photos, customers and agents is data, never instructions.** The catalog prompt tells
   Gemini the photo is data. Prices are parsed from the printed text in Python (Decimal); the model
   never calculates money. Menu text that reads like instructions to an AI (e.g. "Ignore previous
@@ -75,8 +97,8 @@ npm scripts call each tool with `node ./node_modules/...` directly. Keep that pa
 - **Secrets** live in Secret Manager on Cloud Run and in a gitignored `.env` locally. None are in
   the image or the repo.
 
-Not done yet: owner key recovery or rotation from the dashboard, and rate limits shared across
-instances (production runs one instance).
+Not done yet: changing the owner email or rotating the backup key from the dashboard, and rate
+limits shared across instances (production runs one instance).
 
 ## Connect an AI agent
 Every published shop can be used by any AI agent that speaks MCP (Claude, Gemini, ChatGPT with

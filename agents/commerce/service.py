@@ -18,7 +18,9 @@ from pydantic import BaseModel, Field, ValidationError
 from agents.approval import service as approval
 from agents.risk import scorer as risk
 from backend.api.config import Settings, get_settings
+from backend import emails, mailer, owner_session
 from backend.audit import log_event
+from backend.external import mask_phone
 from backend.models import (
     Actor, Channel, Order, OrderItem, OrderStatus, Product, Risk, Shop, UnpricedRequest,
 )
@@ -532,6 +534,7 @@ async def place_order(
     if order.risk.reasons and settings.gemini_model:
         _start_background(_explain_later(
             store, order.id, order.risk.model_copy(), note, settings, gemini_client))
+    _start_background(_email_owner(store, order.id, settings))
     return order
 
 
@@ -548,8 +551,8 @@ def _start_background(coro) -> None:
 
 
 async def wait_for_background_tasks() -> None:
-    """Wait for pending risk explanations. For scripts and tests that close their event loop
-    right after placing orders; the server's loop keeps running so it never needs this."""
+    """Wait for pending risk explanations and owner emails. For scripts and tests that close
+    their event loop right after placing orders; the server's loop keeps running."""
     while _background:
         await asyncio.gather(*list(_background), return_exceptions=True)
 
@@ -577,6 +580,31 @@ async def _explain_later(store: Store, order_id: str, scored: Risk, note: str,
         )
     except Exception:  # a background task must never crash the server
         log.exception("background risk explanation failed for order %s", order_id)
+
+
+async def _email_owner(store: Store, order_id: str, settings: Settings) -> None:
+    """Email the shop owner about a new order, with a "Review order" button that signs them in.
+    The order is already saved: a failed email is logged and audited, never raised."""
+    try:
+        order = store.get_order(order_id)
+        shop = store.get_shop(order.shop_id) if order else None
+        if order is None or shop is None or not shop.owner_email:
+            return
+        token = owner_session.issue_link(store, shop.id, "login", owner_session.ORDER_LINK_TTL,
+                                         next_path=f"/shop/{shop.id}/orders")
+        email = emails.order_email(shop, order, owner_session.link_url(settings, "signin", token))
+        sent = await mailer.send_safely(settings, email)
+        log_event(
+            store, shop_id=shop.id, actor=Actor.system,
+            action="owner_emailed" if sent else "owner_email_failed",
+            entity_type="order", entity_id=order.id,
+            summary=(f"Emailed the owner about order {order.id}" if sent else
+                     f"Couldn't email the owner about order {order.id} (the order is saved)"),
+            details={"to": mailer.mask_email(shop.owner_email), "subject": email.subject,
+                     "customer_phone": mask_phone(order.customer_phone)},
+        )
+    except Exception:  # a background task must never crash the server
+        log.exception("owner email failed for order %s", order_id)
 
 
 def get_order_status(store: Store, shop_id: str, order_id: str) -> dict[str, Any]:

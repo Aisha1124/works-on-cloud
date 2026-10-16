@@ -7,7 +7,8 @@ Fixed ids, so scripts/try_mcp.py and the UCP request files in scripts/ucp/ can r
              ondeh-ondeh (one pack, option Flavour: Pandan / Gula Melaka)
 No orders are placed and Gemini is not called.
 
-The shop's owner key is OWNER_KEY (only its hash is stored). It opens this shop only. If
+The shop's owner email is SAMPLE_OWNER_EMAIL (optional: it gets the order emails and can
+sign in by email link). Its owner key is OWNER_KEY (only its hash is stored). It opens this shop only. If
 OWNER_KEY is empty the shop gets no key, so nobody can manage it.
 
 Usage:  uv run python scripts/seed_shop.py
@@ -34,7 +35,9 @@ def main() -> None:
     shop = store.save_shop(Shop(
         id=SHOP_ID, slug=SLUG, name="Mak's Kuih", tagline="Nyonya kuih, made fresh",
         shop_type="Home baker", address="Blk 201 Tampines St 21, Tampines",
-        hours="Tue-Sun 9am-6pm", phone="+65 6123 4567", published=True))
+        hours="Tue-Sun 9am-6pm", phone="+65 6123 4567", published=True,
+        owner_email=(settings.sample_owner_email or "").strip().lower(),
+        email_verified=bool(settings.sample_owner_email)))
     store.save_product(Product(
         id="kuih-lapis", shop_id=shop.id, name="Kuih Lapis", name_local="九层糕",
         category="Kuih", description="Steamed layered kuih.",

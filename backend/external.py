@@ -48,6 +48,13 @@ def area_of(shop: Shop) -> str:
     return parts[-1] if parts else ""
 
 
+def mask_phone(phone: str) -> str:
+    """'+65 9123 4567' -> '****4567'. Customer phone numbers are never sent back to agents,
+    and order emails only show the last 4 digits."""
+    digits = "".join(c for c in phone if c.isdigit())
+    return f"****{digits[-4:]}" if len(digits) > 4 else ("****" if digits else "")
+
+
 def client_key(headers, client_host: str | None) -> str:
     """Who is calling, for rate limits. Cloud Run puts the caller first in X-Forwarded-For."""
     forwarded = (headers or {}).get("x-forwarded-for", "") if headers is not None else ""

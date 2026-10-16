@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agents.commerce import service as commerce
 from backend.api.config import Settings
+from backend.external import mask_phone
 from backend.external import (
     GENERIC_ERROR, MAX_ID_LEN, MAX_QUERY_LEN, RATE_LIMIT_MESSAGE, ShopNotFound,
     audit_external_call, clean_agent_name, client_key, published_shop, published_shops,
@@ -36,12 +37,6 @@ from backend.ucp.profile import (
 log = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 64 * 1024
-def mask_phone(phone: str) -> str:
-    """'+65 9123 4567' -> '****4567'. Customer phone numbers are never sent back to agents."""
-    digits = "".join(c for c in phone if c.isdigit())
-    return f"****{digits[-4:]}" if len(digits) > 4 else ("****" if digits else "")
-
-
 COMPLETED = {OrderStatus.auto_approved, OrderStatus.approved, OrderStatus.ready,
              OrderStatus.done}
 

@@ -5,20 +5,21 @@ import { CopyLine, QrDownload } from '../components/Share'
 import { useShop } from '../lib/shop'
 import { Card, EmptyState, ReceiptCard, ReceiptDivider, Stamp, buttonClass } from '../ui'
 
-/** The new owner key, straight after going live. It is never shown again. */
+/** The backup key, straight after going live. It is never shown again. Owners normally sign in
+ *  with an email link; this key is for when email isn't available. */
 function OwnerKeyCard({ ownerKey }: { ownerKey: string }) {
   return (
     <section aria-labelledby="owner-key" className="flex flex-col gap-3 border-2 border-ink bg-turmeric-tint p-4 shadow-hard sm:p-5">
       <h2 id="owner-key" className="text-2xl">
-        Your owner key
+        Backup key, save it somewhere safe
       </h2>
       <p role="note" className="flex items-start gap-2 font-semibold">
         <TriangleAlert aria-hidden className="mt-0.5 size-5 flex-none text-chili" />
-        Save this, you need it to manage orders. We only show it once and can't show it again.
+        We only show it once. You normally sign in with your email; this key gets you in if email doesn't work.
       </p>
-      <CopyLine label="Owner key" value={ownerKey} />
+      <CopyLine label="Backup key" value={ownerKey} />
       <p className="text-sm text-ink-soft">
-        Keep it somewhere safe, like your phone's password manager. To get back in later, tap “Shop owner login” and paste it.
+        Keep it in your phone's notes or password manager. To use it: “Shop owner login”, then “Use backup key instead”.
       </p>
     </section>
   )

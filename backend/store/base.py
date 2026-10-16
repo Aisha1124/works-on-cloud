@@ -31,6 +31,21 @@ class Store(ABC):
     def find_shop_by_owner_key_hash(self, key_hash: str) -> str | None:
         """The shop id whose key has this hash, or None."""
 
+    @abstractmethod
+    def find_shops_by_owner_email(self, email: str) -> list[Shop]:
+        """Shops whose owner_email is `email` (already lower-case)."""
+
+    # Short-lived secrets (sign-in links, sessions), keyed by a hash of the secret.
+    @abstractmethod
+    def put_secret(self, collection: str, key_hash: str, data: dict) -> None: ...
+
+    @abstractmethod
+    def get_secret(self, collection: str, key_hash: str) -> dict | None: ...
+
+    @abstractmethod
+    def pop_secret(self, collection: str, key_hash: str) -> dict | None:
+        """Remove and return it, atomically: a single-use secret can only be used once."""
+
     # Products
     @abstractmethod
     def get_product(self, product_id: str) -> Product | None: ...

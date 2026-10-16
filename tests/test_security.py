@@ -61,7 +61,8 @@ def test_login_opens_only_the_shop_of_that_key(api, store):
     make_shop(store, "shop-b", "kc_key-b")
     r = api.post("/api/owner/login", json={"key": " kc_key-a "})
     assert r.status_code == 200
-    assert r.json() == {"shop_id": a.id, "name": "Shop-A", "slug": "shop-a", "published": True}
+    assert r.json() == {"shop_id": a.id, "name": "Shop-A", "slug": "shop-a", "published": True,
+                        "next": f"/shop/{a.id}/orders"}
 
 
 def test_wrong_key_is_friendly_and_rate_limited(api, store):
@@ -118,7 +119,8 @@ def test_a_key_never_opens_another_shop(api, store):
 
 def test_go_live_issues_the_owner_key_once_and_stores_only_its_hash(api, store):
     draft = make_shop(store, "draft", "kc_draft-key", published=False)
-    r = api.post(f"/api/shops/{draft.id}/publish", headers={"X-Owner-Key": "kc_draft-key"})
+    r = api.post(f"/api/shops/{draft.id}/publish", headers={"X-Owner-Key": "kc_draft-key"},
+                 json={"name": "Draft", "email": "owner@example.sg"})
     assert r.status_code == 200
     key = r.json()["owner_key"]
     assert key.startswith("kc_") and len(key) >= 46  # 32 random bytes, url-safe
@@ -126,6 +128,7 @@ def test_go_live_issues_the_owner_key_once_and_stores_only_its_hash(api, store):
     # The plain key is nowhere in storage, and the draft key no longer works.
     data_dir = Path(store.data_dir)
     assert all(key not in f.read_text(encoding="utf-8") for f in data_dir.glob("*.json"))
+    api.cookies.clear()  # going live also signed this browser in; check the keys alone
     assert api.get(f"/api/shops/{draft.id}",
                    headers={"X-Owner-Key": "kc_draft-key"}).status_code == 401
     assert api.post("/api/owner/login", json={"key": key}).json()["shop_id"] == draft.id
@@ -290,7 +293,8 @@ def test_menu_photo_text_cannot_change_prices_or_behaviour(api, app, store, monk
 
     # Go live and order: menu prices, normal risk and approval rules.
     shop_id, key = draft["shop"]["id"], draft["draft_key"]
-    live = api.post(f"/api/shops/{shop_id}/publish", headers={"X-Owner-Key": key}).json()
+    live = api.post(f"/api/shops/{shop_id}/publish", headers={"X-Owner-Key": key},
+                    json={"name": "Mak's Kuih", "email": "owner@example.sg"}).json()
     slug = live["shop"]["slug"]
     menu = api.get(f"/api/public/shops/{slug}").json()["products"]
     assert {p["name"]: (p["base_price"], [v["price"] for v in p["variants"]]) for p in menu} == {

@@ -32,6 +32,18 @@ class FirestoreStore(Store):
     def find_shop_by_owner_key_hash(self, key_hash: str) -> str | None:
         raise NotImplementedError(_MSG)
 
+    def find_shops_by_owner_email(self, email: str) -> list[Shop]:
+        raise NotImplementedError(_MSG)
+
+    def put_secret(self, collection: str, key_hash: str, data: dict) -> None:
+        raise NotImplementedError(_MSG)
+
+    def get_secret(self, collection: str, key_hash: str) -> dict | None:
+        raise NotImplementedError(_MSG)
+
+    def pop_secret(self, collection: str, key_hash: str) -> dict | None:
+        raise NotImplementedError(_MSG)
+
     def get_product(self, product_id: str) -> Product | None:
         raise NotImplementedError(_MSG)
 

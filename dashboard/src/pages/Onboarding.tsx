@@ -1,15 +1,15 @@
 import { ArrowDown, ArrowRight, Bot, Camera, QrCode, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { GoLiveDialog } from '../components/GoLiveDialog'
 import { OwnerBar } from '../components/OwnerShell'
 import { PhotoDrop } from '../components/PhotoDrop'
 import { ScanView, type ScanPhase } from '../components/ScanView'
 import { PHOTO_TIMEOUT_MS, api, errorText } from '../lib/api'
 import { setOwnerKey } from '../lib/ownerKey'
-import { goLive, liveScreen } from '../lib/publish'
 import { SAMPLE_SHOP } from '../lib/sample'
 import type { DraftResponse } from '../lib/types'
-import { Button, Signboard, buttonClass, cx, useToast } from '../ui'
+import { Button, Signboard, buttonClass, cx } from '../ui'
 
 const STEPS: { icon: LucideIcon; who: string; line: string }[] = [
   { icon: Camera, who: 'Owner', line: 'Snaps a menu photo. Gemini turns it into a menu.' },
@@ -66,25 +66,10 @@ function HowItWorks() {
 }
 
 /** After the menu is read: the next step, always on screen. */
-function GoLiveBar({ shopId, count }: { shopId: string; count: number }) {
-  const navigate = useNavigate()
-  const toast = useToast()
-  const [busy, setBusy] = useState(false)
-
-  async function publish() {
-    setBusy(true)
-    try {
-      const { ownerKey } = await goLive(shopId)
-      const next = liveScreen(shopId, ownerKey)
-      navigate(next.to, next.options)
-    } catch (err) {
-      // e.g. no item has a price yet: the menu screen is where to fix that.
-      toast.show(errorText(err), 'error')
-      setBusy(false)
-    }
-  }
-
+function GoLiveBar({ shopId, shopName, count }: { shopId: string; shopName: string; count: number }) {
+  const [open, setOpen] = useState(false)
   return (
+    <>
     <div className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-ink bg-receipt" role="region" aria-label="Next step">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <p className="font-mono text-sm">
@@ -97,12 +82,14 @@ function GoLiveBar({ shopId, count }: { shopId: string; count: number }) {
           <Link to={`/shop/${shopId}`} className={buttonClass('secondary', 'md')}>
             Fix something first
           </Link>
-          <Button size="lg" loading={busy} onClick={publish}>
+          <Button size="lg" onClick={() => setOpen(true)}>
             Looks right? Go live <ArrowRight aria-hidden className="size-5" />
           </Button>
         </div>
       </div>
     </div>
+    {open && <GoLiveDialog shopId={shopId} defaultName={shopName} onClose={() => setOpen(false)} />}
+    </>
   )
 }
 
@@ -193,9 +180,12 @@ export function Onboarding() {
       {phase === 'idle' && <HowItWorks />}
 
       <section aria-labelledby="upload-menu" className="flex scroll-mt-4 flex-col gap-3">
-        <h2 id="upload-menu" ref={uploadRef} tabIndex={-1} className="text-2xl outline-none sm:text-3xl">
-          {phase === 'idle' ? 'Upload your menu' : 'Reading your menu'}
-        </h2>
+        <div className="flex flex-col gap-1">
+          <h2 id="upload-menu" ref={uploadRef} tabIndex={-1} className="text-2xl outline-none sm:text-3xl">
+            {phase === 'idle' ? 'Upload your menu' : 'Reading your menu'}
+          </h2>
+          {phase === 'idle' && <p className="text-ink-soft">Free. No account needed to start. You'll create your shop at the end.</p>}
+        </div>
         {phase === 'idle' ? (
           <PhotoDrop
             onFiles={start}
@@ -222,7 +212,7 @@ export function Onboarding() {
         )}
       </section>
 
-      {read && <GoLiveBar shopId={result.shop.id} count={result.products.length} />}
+      {read && <GoLiveBar shopId={result.shop.id} shopName={result.shop.name} count={result.products.length} />}
     </main>
   )
 }

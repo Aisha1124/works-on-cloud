@@ -1,11 +1,11 @@
 import { ArrowRight, ImagePlus, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
+import { GoLiveDialog } from '../components/GoLiveDialog'
 import { MenuLines } from '../components/MenuLines'
 import { PhotoDrop } from '../components/PhotoDrop'
 import { ScanView, type ScanPhase } from '../components/ScanView'
 import { PHOTO_TIMEOUT_MS, api, errorText } from '../lib/api'
-import { goLive, liveScreen } from '../lib/publish'
 import { useShop } from '../lib/shop'
 import type { DraftResponse, Product, ProductInput, Shop, ShopDetail } from '../lib/types'
 import {
@@ -519,11 +519,9 @@ function AddPhotoPanel({ shopId, onAdded, onClose }: { shopId: string; onAdded: 
 
 export function CatalogReview() {
   const { data, setData, shopId } = useShop()
-  const navigate = useNavigate()
-  const toast = useToast()
   const [editing, setEditing] = useState<string | null>(null) // product id, or "new:<category>"
   const [addingPhoto, setAddingPhoto] = useState(false)
-  const [publishing, setPublishing] = useState(false)
+  const [goingLive, setGoingLive] = useState(false)
 
   useEffect(() => {
     document.documentElement.style.setProperty('--toast-lift', '4.5rem')
@@ -562,20 +560,6 @@ export function CatalogReview() {
   const deleted = (id: string) => {
     update((d) => ({ ...d, products: d.products.filter((x) => x.id !== id) }))
     setEditing(null)
-  }
-
-  async function publish() {
-    setPublishing(true)
-    try {
-      const { detail, ownerKey } = await goLive(shopId)
-      setData(detail)
-      const next = liveScreen(shopId, ownerKey)
-      navigate(next.to, next.options)
-    } catch (err) {
-      toast.show(errorText(err), 'error')
-    } finally {
-      setPublishing(false)
-    }
   }
 
   return (
@@ -698,12 +682,13 @@ export function CatalogReview() {
               Your shop is live <ArrowRight aria-hidden className="size-4" />
             </Link>
           ) : (
-            <Button size="lg" loading={publishing} onClick={publish} disabled={!products.length}>
+            <Button size="lg" onClick={() => setGoingLive(true)} disabled={!products.length}>
               Go live <ArrowRight aria-hidden className="size-5" />
             </Button>
           )}
         </div>
       </div>
+      {goingLive && <GoLiveDialog shopId={shopId} defaultName={shop.name} onClose={() => setGoingLive(false)} onLive={setData} />}
     </>
   )
 }

@@ -15,6 +15,8 @@ export interface Shop {
   currency: string
   published: boolean
   auto_approve_limit: Money
+  owner_email: string
+  email_verified: boolean
   created_at: string
 }
 
@@ -60,14 +62,19 @@ export interface ShopDetail {
 
 /** Going live: owner_key is only set the first time, and is shown to the owner once. */
 export interface PublishResponse extends ShopDetail {
+  /** The backup key, shown once. */
   owner_key: string | null
+  /** Where the "confirm your email" link went (the owner's own address). */
+  verify_sent_to: string | null
 }
 
-export interface LoginResponse {
+/** After any sign-in (email link, backup key, confirm email): the shop and where to go next. */
+export interface SignedIn {
   shop_id: string
   name: string
   slug: string
   published: boolean
+  next: string
 }
 
 export interface DraftResponse {

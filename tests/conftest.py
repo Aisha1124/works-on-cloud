@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents import gemini
+from backend import mailer
 from backend.api.config import Settings
 from backend.api.main import create_app
 from backend.models import Product, ProductOption, Shop, Variant
@@ -34,6 +35,27 @@ def give_key(store, shop: Shop, key: str = TEST_OWNER_KEY) -> Shop:
     """Make `key` this shop's owner key (only the hash is stored)."""
     store.set_owner_key_hash(shop.id, hash_owner_key(key))
     return shop
+
+
+class FakeMailer:
+    """Records emails instead of sending them. `fail` makes every send raise."""
+
+    def __init__(self):
+        self.sent = []
+        self.fail = False
+
+    async def send(self, email):
+        if self.fail:
+            raise RuntimeError("Resend HTTP 500: simulated outage")
+        self.sent.append(email)
+
+
+@pytest.fixture(autouse=True)
+def mail(monkeypatch) -> FakeMailer:
+    """Tests never send real email (even if .env has RESEND_API_KEY)."""
+    fake = FakeMailer()
+    monkeypatch.setattr(mailer, "get_mailer", lambda settings: fake)
+    return fake
 
 
 @pytest.fixture

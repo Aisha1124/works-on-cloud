@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # Owner key of the sample shop seeded by scripts/seed_shop.py (mak-kuih). Every other shop
     # gets its own random key when it goes live. This key opens mak-kuih only.
     owner_key: SecretStr | None = None
+    # Optional: the sample shop's owner email, so its order emails reach someone.
+    sample_owner_email: str = ""
+
+    # Email (Resend). Empty key: emails are not sent, only logged (subject + masked recipient).
+    resend_api_key: SecretStr | None = None
+    email_from: str = "KampungCart <onboarding@resend.dev>"
 
     # Internal paths. Not listed in .env.example; the defaults work everywhere.
     data_dir: Path = REPO_ROOT / "data"

@@ -1,12 +1,21 @@
 import { api } from './api'
-import { setOwnerKey } from './ownerKey'
+import { clearOwnerKey } from './ownerKey'
 import type { PublishResponse, ShopDetail } from './types'
 
-/** Go live. The first time, the server swaps the draft key for the real owner key: keep it
- *  for this tab and hand it back so the next screen can show it once. */
-export async function goLive(shopId: string): Promise<{ detail: ShopDetail; ownerKey: string | null }> {
-  const { owner_key: ownerKey, ...detail } = await api<PublishResponse>(`/api/shops/${encodeURIComponent(shopId)}/publish`, { method: 'POST' })
-  if (ownerKey) setOwnerKey(shopId, ownerKey)
+export interface Account {
+  name: string
+  email: string
+}
+
+/** Go live = create the owner's account (shop name + email). The server signs this browser in
+ *  with a session cookie and retires the draft key, so the tab drops it too. The backup key
+ *  comes back once, for the next screen to show. */
+export async function goLive(shopId: string, account: Account): Promise<{ detail: ShopDetail; ownerKey: string | null }> {
+  const { owner_key: ownerKey, ...detail } = await api<PublishResponse>(`/api/shops/${encodeURIComponent(shopId)}/publish`, {
+    method: 'POST',
+    json: account,
+  })
+  clearOwnerKey(shopId)
   return { detail, ownerKey }
 }
 

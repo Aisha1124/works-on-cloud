@@ -99,7 +99,8 @@ def test_patch_shop_type(api, store, draft_shop):
 
 def test_publish_makes_clean_unique_stable_slug(api, store, draft_shop):
     store.save_shop(Shop(slug="sample-bakery", name="Someone else"))
-    r = api.post(f"/api/shops/{draft_shop.id}/publish", headers=H)
+    r = api.post(f"/api/shops/{draft_shop.id}/publish", headers=H,
+                 json={"name": "Sample Bakery", "email": "owner@example.sg"})
     assert r.status_code == 200
     body = r.json()
     owner = {"X-Owner-Key": body["owner_key"]}  # going live replaces the draft key
@@ -119,7 +120,8 @@ def test_publish_makes_clean_unique_stable_slug(api, store, draft_shop):
 def test_publish_needs_an_orderable_item(api, store):
     shop = give_key(store, store.save_shop(Shop(slug="empty-1", name="Empty")))
     store.save_product(Product(shop_id=shop.id, name="No price"))
-    r = api.post(f"/api/shops/{shop.id}/publish", headers=H)
+    r = api.post(f"/api/shops/{shop.id}/publish", headers=H,
+                 json={"name": "Empty", "email": "owner@example.sg"})
     assert r.status_code == 400
     assert "price" in r.json()["detail"]
     assert store.get_shop(shop.id).published is False

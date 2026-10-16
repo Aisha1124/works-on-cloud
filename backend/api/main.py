@@ -7,7 +7,10 @@ from fastapi import FastAPI
 from backend.api.config import Settings, get_settings
 from backend.api.deps import AUTH_FAIL_LIMIT, AUTH_FAIL_WINDOW_S
 from backend.api.routes import health, orders, owner, products, public, shops
-from backend.api.routes.shops import DRAFT_LIMIT, DRAFT_WINDOW_S
+from backend.api.routes.owner import LINK_EMAIL_LIMIT, LINK_IP_LIMIT, LINK_WINDOW_S
+from backend.api.routes.shops import (
+    DRAFT_LIMIT, DRAFT_WINDOW_S, VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S,
+)
 from backend.api.spa import spa_router
 from backend.external import ORDER_LIMIT, ORDER_WINDOW_S, RateLimiter
 from backend.mcp_server import create_mcp_server, mcp_route
@@ -33,6 +36,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.order_limiter = order_limiter  # MCP, UCP and the shop page
     app.state.auth_limiter = RateLimiter(AUTH_FAIL_LIMIT, AUTH_FAIL_WINDOW_S)  # wrong owner keys
     app.state.draft_limiter = RateLimiter(DRAFT_LIMIT, DRAFT_WINDOW_S)  # new menu photo reads
+    app.state.link_ip_limiter = RateLimiter(LINK_IP_LIMIT, LINK_WINDOW_S)  # sign-in emails per client
+    app.state.link_email_limiter = RateLimiter(LINK_EMAIL_LIMIT, LINK_WINDOW_S)  # ... per address
+    app.state.verify_limiter = RateLimiter(VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S)  # per shop
 
     app.include_router(health.router)
     app.include_router(owner.router)

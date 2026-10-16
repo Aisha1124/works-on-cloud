@@ -98,6 +98,29 @@ class LocalJsonStore(Store):
             rows = self._read("owner_keys")
         return next((r["shop_id"] for r in rows.values() if r.get("key_hash") == key_hash), None)
 
+    def find_shops_by_owner_email(self, email: str) -> list[Shop]:
+        return [s for s in self.list_shops() if email and s.owner_email == email]
+
+    # --- short-lived secrets (hash only) ----------------------------------
+
+    def put_secret(self, collection: str, key_hash: str, data: dict) -> None:
+        with self._lock:
+            rows = self._read(collection)
+            rows[key_hash] = data
+            self._write(collection, rows)
+
+    def get_secret(self, collection: str, key_hash: str) -> dict | None:
+        with self._lock:
+            return self._read(collection).get(key_hash)
+
+    def pop_secret(self, collection: str, key_hash: str) -> dict | None:
+        with self._lock:
+            rows = self._read(collection)
+            row = rows.pop(key_hash, None)
+            if row is not None:
+                self._write(collection, rows)
+        return row
+
     # --- products -------------------------------------------------------
 
     def get_product(self, product_id: str) -> Product | None:

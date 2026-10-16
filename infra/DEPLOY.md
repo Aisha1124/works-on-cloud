@@ -15,7 +15,11 @@ dashboard. `gcloud run deploy --source .` sends the repo to Cloud Build, which b
   "Shop owner login" to manage that shop's orders. Every other shop gets its own random key
   when it goes live. Pick a long random value, e.g. `kc_` followed by
   `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
-- **Secrets** (`GEMINI_API_KEY`, `OWNER_KEY`) live in Secret Manager and are injected at
+- **Email** goes through Resend with `RESEND_API_KEY` (Secret Manager). Without a verified
+  domain, Resend's test sender `onboarding@resend.dev` can only send to the email address of
+  your own Resend account. Set `EMAIL_FROM` to an address on a verified domain to email any owner.
+  Without `RESEND_API_KEY`, emails are only logged and orders still work.
+- **Secrets** (`GEMINI_API_KEY`, `OWNER_KEY`, `RESEND_API_KEY`) live in Secret Manager and are injected at
   runtime. Nothing secret is in the image: `.env` is excluded by `.gcloudignore` and
   `.dockerignore`.
 - **`BASE_URL` must be the service URL** (`https://SERVICE-PROJECT_NUMBER.REGION.run.app`).
@@ -38,6 +42,9 @@ gcloud config set project "$PROJECT_ID"
 export PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 export SA="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
 export URL="https://$SERVICE-$PROJECT_NUMBER.$REGION.run.app"
+# Gets the sample shop's order emails and can sign in to it by email. While EMAIL_FROM is
+# onboarding@resend.dev, use the email address of your Resend account.
+export SAMPLE_OWNER_EMAIL=you@example.com
 echo "Service URL will be: $URL"
 
 # 3. Enable the APIs
@@ -47,9 +54,10 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
 # 4. Create the secrets (input is hidden; no trailing newline is stored)
 printf "GEMINI_API_KEY: "; read -rs V; echo; printf %s "$V" | gcloud secrets create GEMINI_API_KEY --data-file=-; unset V
 printf "OWNER_KEY: "; read -rs V; echo; printf %s "$V" | gcloud secrets create OWNER_KEY --data-file=-; unset V
+printf "RESEND_API_KEY: "; read -rs V; echo; printf %s "$V" | gcloud secrets create RESEND_API_KEY --data-file=-; unset V
 
 # 5. Let the Cloud Run service account read the secrets, and build from source
-for S in GEMINI_API_KEY OWNER_KEY; do
+for S in GEMINI_API_KEY OWNER_KEY RESEND_API_KEY; do
   gcloud secrets add-iam-policy-binding "$S" \
     --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
 done
@@ -59,8 +67,8 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 # 6. Deploy (answer Y if asked to create an Artifact Registry repository)
 gcloud run deploy "$SERVICE" --source . --region "$REGION" \
   --allow-unauthenticated --max-instances=1 \
-  --set-env-vars "GEMINI_MODEL=gemini-3.8-flash,STORE_BACKEND=local,BASE_URL=$URL,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=$REGION" \
-  --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest,OWNER_KEY=OWNER_KEY:latest"
+  --set-env-vars "^|^GEMINI_MODEL=gemini-3.8-flash|STORE_BACKEND=local|BASE_URL=$URL|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|EMAIL_FROM=KampungCart <onboarding@resend.dev>|SAMPLE_OWNER_EMAIL=$SAMPLE_OWNER_EMAIL" \
+  --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest,OWNER_KEY=OWNER_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest"
 
 # 7. Check /mcp lists the tools
 curl -s -X POST "$URL/mcp" \

@@ -11,12 +11,15 @@ import unicodedata
 from decimal import Decimal
 from pathlib import PurePath
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter, BackgroundTasks, Body, Depends, File, HTTPException, Request, Response, UploadFile,
+)
 from pydantic import BaseModel, Field
 
 from agents.catalog import extract as catalog
 from agents.catalog.images import ImageError
 from backend.api.deps import caller, require_owner
+from backend import emails, mailer, owner_session
 from backend.audit import log_event
 from backend.images import get_image_store
 from backend.mcp_server import MCP_PATH
@@ -64,8 +67,30 @@ class ShopDetail(BaseModel):
 
 
 class PublishResponse(ShopDetail):
-    # Only the first time a shop goes live. Shown to the owner once; never stored in plain text.
+    # Only the first time a shop goes live: the backup key. Shown to the owner once; never
+    # stored in plain text.
     owner_key: str | None = None
+    # Where the "confirm your email" link was sent (the owner's own address).
+    verify_sent_to: str | None = None
+
+
+class PublishIn(BaseModel):
+    """Going live creates the owner's account: shop name and owner email (required the first
+    time; ignored once the shop is live)."""
+
+    name: str | None = Field(default=None, max_length=80)
+    email: str | None = Field(default=None, max_length=owner_session.MAX_EMAIL_LEN)
+
+
+def send_verify_email(store, settings, shop: Shop) -> mailer.Email:
+    """A fresh "confirm your email" message for this shop (sent after the response)."""
+    token = owner_session.issue_link(store, shop.id, "verify", owner_session.VERIFY_LINK_TTL,
+                                     next_path=f"/shop/{shop.id}/orders")
+    return emails.verify_email(shop, owner_session.link_url(settings, "verify", token))
+
+
+VERIFY_RESEND_LIMIT = 3  # "send it again" per shop
+VERIFY_RESEND_WINDOW_S = 900.0
 
 
 def shop_links(settings, shop: Shop) -> ShopLinks:
@@ -179,18 +204,31 @@ def unique_slug(store, shop: Shop) -> str:
 
 
 @router.post("/{shop_id}/publish", response_model=PublishResponse, dependencies=OWNER)
-def publish_shop(request: Request, shop_id: str) -> PublishResponse:
-    """Go live. The first publish picks a clean, unique slug and issues the owner key (the
-    draft key stops working); later ones keep both."""
+def publish_shop(request: Request, response: Response, background: BackgroundTasks, shop_id: str,
+                 body: PublishIn | None = Body(default=None)) -> PublishResponse:
+    """Go live = create the owner's account. The first publish needs the shop name and owner
+    email, picks a clean unique slug, issues the backup key (the draft key stops working),
+    signs the owner in with a session cookie, and emails a "confirm your email" link. The shop
+    is live straight away. Later publishes change nothing."""
     store = request.app.state.store
+    settings = request.app.state.settings
     shop = _shop_or_404(store, shop_id)
     products = store.list_products(shop.id)
+    if not shop.published:
+        name = " ".join((body.name or "").split()) if body else ""
+        email = owner_session.normalize_email(body.email or "") if body else None
+        if not name:
+            raise HTTPException(status_code=400, detail="Give your shop a name first.")
+        if email is None:
+            raise HTTPException(status_code=400,
+                                detail="Enter your email so we can send you orders and sign-in links.")
+        shop = shop.model_copy(update={"name": name, "owner_email": email, "email_verified": False})
     if not shop.name.strip():
         raise HTTPException(status_code=400, detail="Give your shop a name first.")
     if not any(orderable(p) for p in products):
         raise HTTPException(status_code=400,
                             detail="Add at least one available item with a price first.")
-    owner_key = None
+    owner_key = verify_sent_to = None
     if not shop.published:
         old_slug = shop.slug
         shop = shop.model_copy(update={"slug": unique_slug(store, shop), "published": True})
@@ -209,10 +247,32 @@ def publish_shop(request: Request, shop_id: str) -> PublishResponse:
         owner_key = issue_owner_key(store, shop.id)
         log_event(store, shop_id=shop.id, actor=Actor.system, action="owner_key_issued",
                   entity_type="shop", entity_id=shop.id,
-                  summary="Owner key created (shown once; only its hash is stored)",
+                  summary="Backup owner key created (shown once; only its hash is stored)",
+                  details={})
+        owner_session.start_session(store, response, settings, shop.id)
+        background.add_task(mailer.send_safely, settings, send_verify_email(store, settings, shop))
+        verify_sent_to = shop.owner_email
+        log_event(store, shop_id=shop.id, actor=Actor.system, action="verify_email_sent",
+                  entity_type="shop", entity_id=shop.id,
+                  summary=f"Sent a confirm-your-email link to {mailer.mask_email(shop.owner_email)}",
                   details={})
     return PublishResponse(shop=shop, products=products, owner_key=owner_key,
-                           links=shop_links(request.app.state.settings, shop))
+                           verify_sent_to=verify_sent_to, links=shop_links(settings, shop))
+
+
+@router.post("/{shop_id}/verify-email", dependencies=OWNER)
+def resend_verify_email(request: Request, background: BackgroundTasks, shop_id: str) -> dict:
+    """Send the "confirm your email" link again (limited per shop)."""
+    store = request.app.state.store
+    shop = _shop_or_404(store, shop_id)
+    if shop.email_verified or not shop.owner_email:
+        return {"sent_to": None, "verified": shop.email_verified}
+    if not request.app.state.verify_limiter.allow(shop.id):
+        raise HTTPException(status_code=429,
+                            detail="We've sent a few already. Check your spam folder, or try again in 15 minutes.")
+    settings = request.app.state.settings
+    background.add_task(mailer.send_safely, settings, send_verify_email(store, settings, shop))
+    return {"sent_to": shop.owner_email, "verified": False}
 
 
 class ShopSettingsUpdate(BaseModel):

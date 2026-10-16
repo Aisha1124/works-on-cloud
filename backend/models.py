@@ -64,6 +64,9 @@ class Shop(BaseModel):
     currency: str = "SGD"
     published: bool = False
     auto_approve_limit: Decimal = Decimal("150")
+    # Set when the shop goes live. Owner-only: never part of a public or agent response.
+    owner_email: str = ""
+    email_verified: bool = False
     created_at: datetime = Field(default_factory=utc_now)
 
 

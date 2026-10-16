@@ -72,30 +72,54 @@ describe('home page', () => {
 })
 
 describe('after the menu is read', () => {
-  it('shows a sticky "Looks right? Go live" bar that publishes and shows the key once', async () => {
-    const calls = stubApi((url) => {
-      if (url === '/api/shops/draft') return { body: DRAFT }
-      if (url === '/api/shops/shop1/publish')
-        return { body: { shop: { ...DRAFT.shop, published: true }, products: DRAFT.products, links: {}, owner_key: 'kc_owner' } }
-    })
+  const live = { shop: { ...DRAFT.shop, published: true }, products: DRAFT.products, links: {}, owner_key: 'kc_backup', verify_sent_to: 'siti@example.sg' }
+
+  it('says no account is needed to start', () => {
+    renderAt('/', routes)
+    expect(screen.getByText("Free. No account needed to start. You'll create your shop at the end.")).toBeTruthy()
+  })
+
+  it('shows a sticky "Looks right? Go live" bar', async () => {
+    stubApi((url) => (url === '/api/shops/draft' ? { body: DRAFT } : undefined))
     renderAt('/', routes)
     uploadPhoto()
-
     const bar = await screen.findByRole('region', { name: 'Next step' })
     expect(bar.className).toMatch(/fixed/)
     expect(within(bar).getByText('2 items read')).toBeTruthy()
     expect(within(bar).getByRole('link', { name: 'Fix something first' }).getAttribute('href')).toBe('/shop/shop1')
     expect(getOwnerKey('shop1')).toBe('kc_draft')
-
-    fireEvent.click(within(bar).getByRole('button', { name: /Looks right\? Go live/ }))
-    const landed = await screen.findByTestId('landed')
-    expect(landed.dataset.path).toBe('/shop/shop1/live')
-    expect(JSON.parse(landed.dataset.state!)).toEqual({ ownerKey: 'kc_owner' })
-    expect(getOwnerKey('shop1')).toBe('kc_owner')
-    expect(calls.find((c) => c.url.endsWith('/publish'))?.init?.headers).toMatchObject({ 'X-Owner-Key': 'kc_draft' })
   })
 
-  it('keeps the owner on the page with a friendly message if going live fails', async () => {
+  it('Go live asks for shop name and email, creates the shop and shows the backup key once', async () => {
+    const calls = stubApi((url) => {
+      if (url === '/api/shops/draft') return { body: DRAFT }
+      if (url === '/api/shops/shop1/publish') return { body: live }
+    })
+    renderAt('/', routes)
+    uploadPhoto()
+    fireEvent.click(await screen.findByRole('button', { name: /Looks right\? Go live/ }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Create your shop' })
+    const name = within(dialog).getByLabelText('Shop name') as HTMLInputElement
+    expect(name.value).toBe("Auntie Lim's Bakes")
+    fireEvent.click(within(dialog).getByRole('button', { name: /Go live/ }))
+    expect(within(dialog).getByText('Your email, so we can send you orders.')).toBeTruthy()
+    expect(calls.some((c) => c.url.endsWith('/publish'))).toBe(false)
+
+    fireEvent.change(within(dialog).getByLabelText('Your email'), { target: { value: 'siti@example.sg' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Go live/ }))
+    const landed = await screen.findByTestId('landed')
+    expect(landed.dataset.path).toBe('/shop/shop1/live')
+    expect(JSON.parse(landed.dataset.state!)).toEqual({ ownerKey: 'kc_backup' })
+
+    const publish = calls.find((c) => c.url.endsWith('/publish'))!
+    expect(JSON.parse(String(publish.init?.body))).toEqual({ name: "Auntie Lim's Bakes", email: 'siti@example.sg' })
+    expect(publish.init?.headers).toMatchObject({ 'X-Owner-Key': 'kc_draft' })
+    // The browser is now signed in by cookie; the dead draft key is dropped from the tab.
+    expect(getOwnerKey('shop1')).toBeNull()
+  })
+
+  it('shows the server problem in the dialog if going live fails', async () => {
     stubApi((url) => {
       if (url === '/api/shops/draft') return { body: DRAFT }
       if (url.endsWith('/publish')) return { status: 400, body: { detail: 'Add at least one available item with a price first.' } }
@@ -103,7 +127,10 @@ describe('after the menu is read', () => {
     renderAt('/', routes)
     uploadPhoto()
     fireEvent.click(await screen.findByRole('button', { name: /Looks right\? Go live/ }))
-    expect(await screen.findByText('Add at least one available item with a price first.')).toBeTruthy()
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Your email'), { target: { value: 'siti@example.sg' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Go live/ }))
+    expect(await within(dialog).findByText('Add at least one available item with a price first.')).toBeTruthy()
     expect(screen.queryByTestId('landed')).toBeNull()
   })
 
