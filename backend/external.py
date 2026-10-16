@@ -4,6 +4,7 @@ Only plumbing lives here: which shops are visible, per-client rate limits, input
 the audit record of every external call. Business logic stays in agents/commerce.
 """
 
+import re
 import threading
 import time
 from collections import defaultdict, deque
@@ -43,8 +44,12 @@ def clean_agent_name(name: str | None) -> str:
 
 
 def area_of(shop: Shop) -> str:
-    """The last part of the address, e.g. "Tampines" from "Blk 123, Tampines"."""
+    """The last part of the address, e.g. "Tampines" from "Blk 123, Tampines" or from
+    "Tampines, Singapore" (a trailing country/postcode part is skipped)."""
     parts = [p.strip() for p in shop.address.split(",") if p.strip()]
+    while len(parts) > 1 and re.fullmatch(r"(?i)(republic of )?singapore( \d{6})?|\d{6}",
+                                          parts[-1]):
+        parts.pop()
     return parts[-1] if parts else ""
 
 

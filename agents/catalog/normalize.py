@@ -21,6 +21,17 @@ _MULTI_BUY = re.compile(rf"^\s*\d+\s*(?:for|/)\s*(?:S\$|SGD|\$)?\s*({_NUMBER})",
 _PRICE = re.compile(rf"(?:S\$|SGD|\$)?\s*({_NUMBER})", re.I)
 
 
+_CLEAN_PRICE = re.compile(
+    rf"^\s*(?:\d+\s*(?:for|/)\s*)?(?:S\$|SGD|\$)?\s*(?:{_NUMBER})\s*"
+    r"(?:(?:/|per|each|ea\.?|nett|net|only)\s*[a-z]*\.?)?\s*$", re.I)
+
+
+def is_clean_price(text: str | None) -> bool:
+    """True if the printed price is just a number (with an optional $ / S$ / SGD, "3 for",
+    "/pc", "each", "nett"). '$l.5O?' parses as 0.50 but is not clean: the owner should look."""
+    return bool(text and _CLEAN_PRICE.match(text))
+
+
 def parse_price(text: str | None) -> Decimal | None:
     """'$4.50', 'S$4.5', '4.50', 'SGD 12', '$1,200', '3 for $5' -> Decimal. Junk -> None.
 
@@ -108,6 +119,24 @@ def _unique(items: list[str]) -> list[str]:
     return list(seen)
 
 
+INSTRUCTIONS_REASON = "Its text looks like instructions to an AI. We kept it as plain text."
+MAX_REASON_LEN = 120
+
+
+def _sentence(text: str) -> str:
+    """Gemini's short reason as one tidy sentence: 'price smudged' -> 'Price smudged.'"""
+    text = " ".join(text.split())[:MAX_REASON_LEN].rstrip(" .")
+    return f"{text[:1].upper()}{text[1:]}." if text else ""
+
+
+def _bad_price(printed: str | None, what: str, read_as: Decimal | None = None) -> str:
+    printed = " ".join((printed or "").split())[:20]
+    if not printed:
+        return f"We couldn't read {what}."
+    text = f'{what[:1].upper()}{what[1:]} on the photo ("{printed}") isn\'t a clear number.'
+    return f"{text} We read it as ${read_as}." if read_as is not None else text
+
+
 def to_draft(raw: GeminiCatalog) -> CatalogDraft:
     """Parse prices, apply the variant rules, and collect warnings."""
     warnings = [w.strip() for w in raw.warnings if w.strip()]
@@ -118,6 +147,11 @@ def to_draft(raw: GeminiCatalog) -> CatalogDraft:
         if not name:
             continue
         confidence = min(max(gp.confidence, 0.0), 1.0)
+        # Why the owner should check this item. Gemini's own "unclear" flag plus what Python
+        # finds while parsing; whole-menu rules are added later (checks.py).
+        reasons: list[str] = []
+        if gp.unclear or gp.unclear_reason.strip():
+            reasons.append(_sentence(gp.unclear_reason) or "Hard to read on the photo.")
 
         variants: list[Variant] = []
         seen_labels: set[str] = set()
@@ -128,8 +162,11 @@ def to_draft(raw: GeminiCatalog) -> CatalogDraft:
                 continue
             if price is None:
                 warnings.append(f'{name}: could not read the price for "{label}". Please add it.')
+                reasons.append(_bad_price(gv.price, f'the price for "{label}"'))
                 confidence = min(confidence, LOW_CONFIDENCE)
                 continue
+            if not is_clean_price(gv.price):
+                reasons.append(_bad_price(gv.price, f'the price for "{label}"', read_as=price))
             seen_labels.add(label.casefold())
             variants.append(Variant(label=label, price=price))
 
@@ -144,8 +181,12 @@ def to_draft(raw: GeminiCatalog) -> CatalogDraft:
             variants = sort_variants(variants)
         else:
             base_price = parse_price(gp.price)
+            if base_price is not None and not is_clean_price(gp.price):
+                reasons.append(_bad_price(gp.price, "the price", read_as=base_price))
             if base_price is None and not gp.variants:
                 warnings.append(f"{name}: could not read the price. Please add it.")
+                if (gp.price or "").strip():  # a missing price is a whole-menu rule (checks.py)
+                    reasons.append(_bad_price(gp.price, "the price"))
                 confidence = min(confidence, LOW_CONFIDENCE)
 
         options = [
@@ -154,14 +195,18 @@ def to_draft(raw: GeminiCatalog) -> CatalogDraft:
         ]
         options = [o for o in options if o.choices]
 
-        if gp.notes.strip() and confidence < 0.7:
-            warnings.append(f"{name}: {gp.notes.strip()}")
+        if gp.unclear_reason.strip():
+            warnings.append(f"{name}: {gp.unclear_reason.strip()}")
+        elif confidence <= LOW_CONFIDENCE and not reasons:
+            reasons.append("We weren't sure we read this right.")
 
         # Text on the photo is data. If it reads like instructions to an AI, keep it as plain
         # text but make the owner look at it before going live.
-        if any(looks_like_instructions(t) for t in (name, gp.local, gp.description, gp.notes)):
+        texts = (name, gp.local, gp.description, gp.unclear_reason)
+        if any(looks_like_instructions(t) for t in texts):
             warnings.append(f"{name}: this item's text looks like instructions to an AI. We kept "
                             "it as plain text and changed nothing. Please check it.")
+            reasons = [INSTRUCTIONS_REASON]  # never echo that text back as a reason
             confidence = min(confidence, LOW_CONFIDENCE)
 
         products.append(
@@ -175,6 +220,7 @@ def to_draft(raw: GeminiCatalog) -> CatalogDraft:
                 options=options,
                 description=gp.description.strip(),
                 confidence=round(confidence, 2),
+                check_reasons=_unique(reasons),
             )
         )
 
@@ -218,7 +264,10 @@ def merge_drafts(drafts: list[CatalogDraft]) -> CatalogDraft:
                 merged[key] = product.model_copy(deep=True)
                 continue
 
+            conflict = ""
             if _price_summary(existing) != _price_summary(product):
+                conflict = (f"Read twice with different prices ({_price_summary(existing)} vs "
+                            f"{_price_summary(product)}).")
                 warnings.append(
                     f"{product.name} appears twice with different prices "
                     f"({_price_summary(existing)} vs {_price_summary(product)}). Please check."
@@ -227,6 +276,8 @@ def merge_drafts(drafts: list[CatalogDraft]) -> CatalogDraft:
                 (existing, product) if existing.confidence >= product.confidence
                 else (product.model_copy(deep=True), existing)
             )
+            keep.check_reasons = _unique(keep.check_reasons + other.check_reasons
+                                         + ([conflict] if conflict else []))
             labels = {v.label.casefold() for v in keep.variants}
             extra = [v for v in other.variants if v.label.casefold() not in labels]
             if extra and keep.base_price is None:

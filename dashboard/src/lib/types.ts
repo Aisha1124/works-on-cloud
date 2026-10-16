@@ -54,10 +54,14 @@ export interface ShopLinks {
   public_page: string
 }
 
+/** Product id -> why the owner should check it (unclear read, odd price, ...). Guidance only. */
+export type MenuChecks = Record<string, string[]>
+
 export interface ShopDetail {
   shop: Shop
   products: Product[]
   links: ShopLinks
+  checks: MenuChecks
 }
 
 /** Going live: owner_key is only set the first time, and is shown to the owner once. */
@@ -81,6 +85,7 @@ export interface DraftResponse {
   shop: Shop
   products: Product[]
   warnings: string[]
+  checks: MenuChecks
   /** Temporary key for this browser until the shop goes live. */
   draft_key?: string | null
 }
@@ -152,7 +157,10 @@ export interface AuditPage {
   offset: number
 }
 
-export type PublicShop = Pick<Shop, 'slug' | 'name' | 'tagline' | 'shop_type' | 'address' | 'hours' | 'phone' | 'currency'>
+export type PublicShop = Pick<Shop, 'slug' | 'name' | 'tagline' | 'shop_type' | 'address' | 'hours' | 'phone' | 'currency'> & {
+  /** Only the sample shop: it shows an "Example shop" label. */
+  example?: boolean
+}
 
 export interface PublicShopPage {
   shop: PublicShop

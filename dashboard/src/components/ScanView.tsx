@@ -1,6 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { useEffect, useState, type CSSProperties } from 'react'
-import type { Product } from '../lib/types'
+import type { MenuChecks, Product } from '../lib/types'
 import { Button, ReceiptCard, ReceiptDivider, Stamp, cx } from '../ui'
 import { ErrorCard } from './ErrorCard'
 import { MenuLines } from './MenuLines'
@@ -20,6 +20,8 @@ export interface ScanViewProps {
   photos: string[]
   phase: ScanPhase
   products: Product[]
+  /** Product id -> reasons to check it (from the API). */
+  checks?: MenuChecks
   warnings?: string[]
   error?: string | null
   onRetry?: () => void
@@ -39,8 +41,8 @@ function StatusLine() {
 }
 
 /** The photo with a scan line while Gemini reads it, then the items printing into a receipt. */
-export function ScanView({ photos, phase, products, warnings = [], error, onRetry, onCancel, onContinue, continueLabel = 'Check your menu' }: ScanViewProps) {
-  const toCheck = products.filter((p) => p.confidence < 0.7).length
+export function ScanView({ photos, phase, products, checks = {}, warnings = [], error, onRetry, onCancel, onContinue, continueLabel = 'Check your menu' }: ScanViewProps) {
+  const toCheck = products.filter((p) => checks[p.id]?.length).length
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start">

@@ -23,7 +23,8 @@ class OptionIn(BaseModel):
 
 
 class ProductIn(BaseModel):
-    """The whole product as the owner sees it. Owner-checked items get confidence 1."""
+    """The whole product as the owner sees it. Items the owner saves get confidence 1 and lose
+    their read-time check reasons (the owner has looked at them)."""
 
     name: str = Field(min_length=1, max_length=80)
     name_local: str = Field(default="", max_length=80)
@@ -64,7 +65,8 @@ def _snapshot(p: Product) -> dict:
 @router.post("", response_model=Product, status_code=201)
 def create_product(request: Request, shop_id: str, body: ProductIn) -> Product:
     store = _store(request, shop_id)
-    product = store.save_product(Product(shop_id=shop_id, confidence=1.0, **body.fields()))
+    product = store.save_product(Product(shop_id=shop_id, confidence=1.0, owner_checked=True,
+                                         **body.fields()))
     log_event(store, shop_id=shop_id, actor=Actor.owner, action="product_created",
               entity_type="product", entity_id=product.id,
               summary=f"Owner added {product.name}", details={"after": _snapshot(product)})
@@ -75,8 +77,15 @@ def create_product(request: Request, shop_id: str, body: ProductIn) -> Product:
 def update_product(request: Request, shop_id: str, product_id: str, body: ProductIn) -> Product:
     store = _store(request, shop_id)
     before = _product_or_404(store, shop_id, product_id)
+    fields = body.fields()
+    old = before.model_dump(include=set(fields))
+    # Only "sold out" toggled: the owner hasn't looked at the item, so its checks stay.
+    toggled_only = {k for k in fields if fields[k] != old[k]} <= {"available"} and (
+        fields["available"] != old["available"])
+    checked = {} if toggled_only else {"confidence": 1.0, "check_reasons": [],
+                                       "owner_checked": True}
     product = store.save_product(Product.model_validate(
-        {**before.model_dump(), **body.fields(), "confidence": 1.0}))
+        {**before.model_dump(), **fields, **checked}))
     log_event(store, shop_id=shop_id, actor=Actor.owner, action="product_updated",
               entity_type="product", entity_id=product.id,
               summary=f"Owner edited {product.name}",

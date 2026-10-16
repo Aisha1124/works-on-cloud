@@ -87,8 +87,9 @@ def _money(value: Decimal) -> str:
 
 
 def _shop_summary(shop: Shop) -> dict[str, Any]:
+    # The sample shop says so, so agents can tell their users it isn't a real business.
     return {"shop_slug": shop.slug, "name": shop.name, "type": shop.shop_type,
-            "area": area_of(shop)}
+            "area": area_of(shop), **({"example_shop": True} if shop.example else {})}
 
 
 def _menu_item(p) -> dict[str, Any]:

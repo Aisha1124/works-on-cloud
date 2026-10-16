@@ -330,8 +330,125 @@ def test_resend_error_is_logged_not_raised(monkeypatch, caplog):
     assert "403" in caplog.text and "s***@example.sg" in caplog.text and "siti@" not in caplog.text
 
 
-def test_no_api_key_means_log_only(monkeypatch):
+def test_no_credentials_means_log_only(monkeypatch):
     monkeypatch.undo()  # the real get_mailer, not the test fake
     assert isinstance(mailer.get_mailer(Settings(_env_file=None)), mailer.LogMailer)
+    assert isinstance(mailer.get_mailer(Settings(_env_file=None, smtp_user="kc@gmail.com")),
+                      mailer.LogMailer)
+    assert isinstance(mailer.get_mailer(Settings(_env_file=None, email_provider="resend")),
+                      mailer.LogMailer)
+    # A Resend key alone doesn't switch providers: smtp is the default.
     assert isinstance(mailer.get_mailer(Settings(_env_file=None, resend_api_key="re_x")),
-                      mailer.ResendMailer)
+                      mailer.LogMailer)
+
+
+def test_provider_selection(monkeypatch):
+    monkeypatch.undo()
+    resend = mailer.get_mailer(Settings(_env_file=None, email_provider="resend",
+                                        resend_api_key="re_x"))
+    assert isinstance(resend, mailer.ResendMailer)
+    assert resend.sender == "KampungCart <onboarding@resend.dev>"
+    smtp = mailer.get_mailer(Settings(_env_file=None, smtp_user="kc.orders@gmail.com",
+                                      smtp_password="abcd efgh ijkl mnop"))
+    assert isinstance(smtp, mailer.SmtpMailer)
+    assert (smtp.host, smtp.port) == ("smtp.gmail.com", 587)
+    assert smtp.sender == "KampungCart <kc.orders@gmail.com>"
+    assert smtp.password == "abcdefghijklmnop"
+    custom = mailer.get_mailer(Settings(_env_file=None, smtp_user="a@gmail.com", smtp_password="p",
+                                        email_from="Mak's Kuih via KampungCart <a@gmail.com>"))
+    assert custom.sender == "Mak's Kuih via KampungCart <a@gmail.com>"
+
+
+# --- The SMTP client ---------------------------------------------------------------------
+
+
+class FakeSMTP:
+    """Stands in for smtplib.SMTP: records the calls, sends nothing."""
+
+    instances: list["FakeSMTP"] = []
+
+    def __init__(self, host, port, timeout=None, fail_on=None):
+        self.host, self.port, self.timeout = host, port, timeout
+        self.calls: list[str] = []
+        self.sent = []
+        self.fail_on = fail_on
+        FakeSMTP.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.calls.append("quit")
+
+    def _step(self, name):
+        self.calls.append(name)
+        if self.fail_on == name:
+            raise self.error
+
+    def starttls(self):
+        self._step("starttls")
+
+    def login(self, user, password):
+        self.login_args = (user, password)
+        self._step("login")
+
+    def send_message(self, msg):
+        self._step("send_message")
+        self.sent.append(msg)
+
+
+def smtp_mailer(fail_on=None, error=None):
+    FakeSMTP.instances = []
+
+    def factory(host, port, timeout=None):
+        fake = FakeSMTP(host, port, timeout, fail_on)
+        fake.error = error
+        return fake
+
+    return mailer.SmtpMailer("smtp.gmail.com", 587, "kc.orders@gmail.com", "app-pass",
+                             "KampungCart <kc.orders@gmail.com>", smtp_factory=factory)
+
+
+def test_smtp_message_shape():
+    sender = smtp_mailer()
+    asyncio.run(sender.send(mailer.Email(to="siti@example.sg", subject="New order",
+                                         text="plain body", html="<p>html body</p>")))
+    (smtp,) = FakeSMTP.instances
+    assert (smtp.host, smtp.port, smtp.timeout) == ("smtp.gmail.com", 587, mailer.TIMEOUT_S)
+    assert smtp.calls == ["starttls", "login", "send_message", "quit"]  # STARTTLS before login
+    assert smtp.login_args == ("kc.orders@gmail.com", "app-pass")
+    (msg,) = smtp.sent
+    assert msg["From"] == "KampungCart <kc.orders@gmail.com>"
+    assert msg["To"] == "siti@example.sg" and msg["Subject"] == "New order"
+    assert msg["Message-ID"].endswith("@gmail.com>")
+    parts = {p.get_content_type(): p.get_content() for p in msg.iter_parts()}
+    assert parts["text/plain"].strip() == "plain body"
+    assert parts["text/html"].strip() == "<p>html body</p>"
+
+
+def test_smtp_error_is_logged_masked_not_raised(monkeypatch, caplog):
+    import smtplib
+
+    error = smtplib.SMTPRecipientsRefused({"siti@example.sg": (550, b"No such user")})
+    sender = smtp_mailer(fail_on="send_message", error=error)
+    monkeypatch.setattr(mailer, "get_mailer", lambda s: sender)
+    with caplog.at_level(logging.ERROR, logger="backend.mailer"):
+        ok = asyncio.run(mailer.send_safely(Settings(_env_file=None), mailer.Email(
+            to="siti@example.sg", subject="S", text="t", html="h")))
+    assert ok is False
+    assert "SMTPRecipientsRefused" in caplog.text and "s***@example.sg" in caplog.text
+    assert "siti@" not in caplog.text
+
+
+def test_smtp_login_failure_never_loses_the_order(app, store, monkeypatch, caplog):
+    import smtplib
+
+    live_shop(store)
+    sender = smtp_mailer(fail_on="login",
+                         error=smtplib.SMTPAuthenticationError(535, b"Bad credentials"))
+    monkeypatch.setattr(mailer, "get_mailer", lambda s: sender)
+    with caplog.at_level(logging.ERROR, logger="backend.mailer"):
+        order = place(store, app.state.settings, Channel.web)
+    assert store.get_order(order.id) is not None
+    assert "owner_email_failed" in [e.action for e in store.list_audit_events(order.shop_id)]
+    assert "SMTPAuthenticationError" in caplog.text

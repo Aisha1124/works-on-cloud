@@ -201,7 +201,8 @@ export function Onboarding() {
             photos={photos}
             phase={phase}
             products={result?.products ?? []}
-            warnings={result?.warnings}
+            checks={result?.checks}
+          warnings={result?.warnings}
             error={error}
             onRetry={() => void upload(files)}
             onCancel={reset}

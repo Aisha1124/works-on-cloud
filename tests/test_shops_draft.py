@@ -52,7 +52,7 @@ DRAFT = CatalogDraft(
 def fake_extract(monkeypatch):
     calls = []
 
-    async def fake(images, *, settings=None, client=None):
+    async def fake(images, *, settings=None, client=None, preprocessed=False):
         calls.append(images)
         return DRAFT
 

@@ -84,6 +84,7 @@ export function GoLiveDialog({
             <Button type="submit" size="lg" loading={busy}>
               Go live <ArrowRight aria-hidden className="size-5" />
             </Button>
+            <p className="text-sm text-ink-soft">We'll email you a link to confirm. Check your spam folder if you don't see our email.</p>
           </form>
         </ReceiptCard>
       </div>

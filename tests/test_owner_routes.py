@@ -134,7 +134,7 @@ def photo():
 
 
 def test_add_photos_appends_products(api, store, draft_shop, monkeypatch):
-    async def fake(images, *, settings=None, client=None):
+    async def fake(images, *, settings=None, client=None, preprocessed=False):
         return CatalogDraft(products=[DraftProduct(name="Ondeh Ondeh", base_price=Decimal("12.50"),
                                                    unit="10 pcs")])
 
@@ -147,7 +147,7 @@ def test_add_photos_appends_products(api, store, draft_shop, monkeypatch):
 
 
 def test_add_photos_friendly_error(api, draft_shop, monkeypatch):
-    async def fail(images, *, settings=None, client=None):
+    async def fail(images, *, settings=None, client=None, preprocessed=False):
         raise ex.CatalogExtractionError(ex.BUSY_ERROR)
 
     monkeypatch.setattr(ex, "extract_catalog_async", fail)
@@ -251,13 +251,14 @@ def test_public_page_has_jsonld(api, live_shop):
     # The product name can't close the script element early.
     assert "</script><b>" not in html
     data = jsonld(html)
-    assert data["@type"] == "Store"
+    assert data["@type"] == "FoodEstablishment"
     assert data["url"] == "https://kc.example.sg/s/mak-kuih"
-    offers = data["hasOfferCatalog"]["itemListElement"]
+    sections = data["hasMenu"]["hasMenuSection"]
+    assert [s["name"] for s in sections] == ["Kuih", "Other items"]
+    offers = [o for s in sections for item in s["hasMenuItem"] for o in item["offers"]]
     assert [(o["name"], o["price"], o["priceCurrency"]) for o in offers] == [
         ("20 pcs", "16.00", "SGD"), ("40 pcs", "30.00", "SGD"), ("10 pcs", "12.50", "SGD")]
-    assert offers[0]["itemOffered"] == {"@type": "Product", "name": "Kuih Lapis </script><b>x",
-                                        "category": "Kuih"}
+    assert sections[0]["hasMenuItem"][0]["name"] == "Kuih Lapis </script><b>x"
 
 
 def test_public_page_unknown_slug_is_plain_shell(api, draft_shop):

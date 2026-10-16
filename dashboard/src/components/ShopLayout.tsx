@@ -38,7 +38,7 @@ function ConfirmEmailBanner({ shop }: { shop: Shop }) {
       <p className="flex items-start gap-2">
         <MailWarning aria-hidden className="mt-0.5 size-5 flex-none" />
         <span>
-          <b>Check your email to confirm.</b> We sent a link to <b className="break-all">{shop.owner_email}</b>. Your shop is already live.
+          <b>Check your email to confirm.</b> We sent a link to <b className="break-all">{shop.owner_email}</b>. Your shop is already live. Check your spam folder if you don't see our email.
         </span>
       </p>
       <Button variant="secondary" size="sm" loading={busy} onClick={resend} className="self-start sm:self-auto">

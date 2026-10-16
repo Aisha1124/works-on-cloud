@@ -1,5 +1,5 @@
-"""Public shop page: menu JSON for the SPA, /s/{slug} with schema.org JSON-LD, and pickup
-orders from customers (no key, no signup). Customers never see risk details or other orders."""
+"""Public shop page: menu JSON for the SPA, /s/{slug} with schema.org JSON-LD, llms.txt files
+for AI crawlers, and pickup orders from customers (no key, no signup). Customers never see risk details or other orders."""
 
 import html
 import json
@@ -12,16 +12,19 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from agents.commerce import service as commerce
+from backend import ai_readable
 from backend.api.config import Settings
 from backend.api.deps import caller
 from backend.api.routes.shops import ShopLinks, shop_links
-from backend.external import MAX_ID_LEN, RATE_LIMIT_MESSAGE, ShopNotFound, published_shop
+from backend.external import (
+    MAX_ID_LEN, RATE_LIMIT_MESSAGE, ShopNotFound, published_shop, published_shops,
+)
 from backend.models import Actor, Channel, Order, OrderStatus, Product, Shop
 from backend.timeutil import to_sg
+from backend.ucp.profile import base_url
 
 router = APIRouter()
 
-CENT = Decimal("0.01")
 
 
 class PublicShop(BaseModel):
@@ -35,11 +38,19 @@ class PublicShop(BaseModel):
     hours: str
     phone: str
     currency: str
+    example: bool = False  # the sample shop: shows an "Example shop" label
+
+
+class PublicProduct(Product):
+    """A product as anyone may see it: no owner-only check notes."""
+
+    check_reasons: list[str] = Field(default_factory=list, exclude=True)
+    owner_checked: bool = Field(default=False, exclude=True)
 
 
 class PublicShopPage(BaseModel):
     shop: PublicShop
-    products: list[Product]
+    products: list[PublicProduct]
     links: ShopLinks
 
 
@@ -49,7 +60,8 @@ def _page(request: Request, slug: str) -> PublicShopPage | None:
         shop = published_shop(store, slug)
     except ShopNotFound:
         return None
-    products = [p for p in store.list_products(shop.id) if p.available]
+    products = [PublicProduct(**p.model_dump()) for p in store.list_products(shop.id)
+                if p.available]
     return PublicShopPage(shop=PublicShop(**shop.model_dump()), products=products,
                           links=shop_links(request.app.state.settings, shop))
 
@@ -176,46 +188,6 @@ def get_web_order(request: Request, order_id: str) -> WebOrderOut:
     return _order_out(shop, order)
 
 
-def _price(value: Decimal) -> str:
-    return str(value.quantize(CENT))
-
-
-def _offers(product: Product, currency: str) -> list[dict[str, Any]]:
-    item = {"@type": "Product", "name": product.name}
-    if product.name_local:
-        item["alternateName"] = product.name_local
-    if product.category:
-        item["category"] = product.category
-    if product.description:
-        item["description"] = product.description
-    priced = ([(v.label, v.price) for v in product.variants] if product.variants
-              else [(product.unit, product.base_price)] if product.base_price is not None else [])
-    return [{
-        "@type": "Offer",
-        **({"name": label} if label else {}),
-        "price": _price(price),
-        "priceCurrency": currency,
-        "availability": "https://schema.org/InStock",
-        "itemOffered": item,
-    } for label, price in priced]
-
-
-def shop_jsonld(shop: Shop | PublicShop, products: list[Product], url: str) -> dict[str, Any]:
-    data: dict[str, Any] = {"@context": "https://schema.org", "@type": "Store",
-                            "name": shop.name, "url": url}
-    if shop.tagline:
-        data["description"] = shop.tagline
-    if shop.phone:
-        data["telephone"] = shop.phone
-    if shop.address:
-        data["address"] = {"@type": "PostalAddress", "streetAddress": shop.address,
-                           "addressCountry": "SG"}
-    offers = [o for p in products for o in _offers(p, shop.currency)]
-    data["hasOfferCatalog"] = {"@type": "OfferCatalog", "name": "Menu",
-                               "itemListElement": offers}
-    return data
-
-
 def _script_json(data: dict[str, Any]) -> str:
     """JSON that is safe inside <script>: no '<', '>' or '&' can end the element."""
     text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
@@ -229,7 +201,8 @@ def _index_html(settings: Settings) -> str | None:
 
 @router.get("/s/{slug}", include_in_schema=False)
 def public_shop_html(request: Request, slug: str):
-    """The SPA shell, plus JSON-LD and a title so crawlers and AI agents see the menu."""
+    """The SPA shell, plus a title, JSON-LD and a link to llms.txt, so crawlers and AI agents
+    that don't run JavaScript see the menu."""
     shell = _index_html(request.app.state.settings)
     if shell is None:
         return PlainTextResponse("Dashboard not built yet. Run scripts/build.ps1.",
@@ -238,10 +211,42 @@ def public_shop_html(request: Request, slug: str):
     if page is not None and "</head>" in shell:
         head = (f"<title>{html.escape(page.shop.name)} · KampungCart</title>"
                 f'<script type="application/ld+json">'
-                f"{_script_json(shop_jsonld(page.shop, page.products, page.links.public_page))}"
-                f"</script>")
+                f"{_script_json(ai_readable.shop_jsonld(page.shop, page.products, page.links.public_page))}"
+                f"</script>"
+                f'<link rel="alternate" type="text/plain" title="llms.txt" '
+                f'href="/s/{html.escape(page.shop.slug)}/llms.txt">')
         if "<title>" in shell:
             start, end = shell.index("<title>"), shell.index("</title>") + len("</title>")
             shell = shell[:start] + shell[end:]
         shell = shell.replace("</head>", head + "</head>", 1)
     return HTMLResponse(shell, headers={"Cache-Control": "no-cache"})
+
+
+TEXT = "text/plain; charset=utf-8"
+
+
+@router.get("/s/{slug}/llms.txt", include_in_schema=False)
+def shop_llms_txt(request: Request, slug: str):
+    """The shop in plain text: menu with prices, hours, pickup rules and how to order."""
+    page = _page(request, slug)
+    if page is None:
+        return PlainTextResponse("This shop isn't open on KampungCart.\n", status_code=404,
+                                 media_type=TEXT)
+    base = base_url(request.app.state.settings)
+    return PlainTextResponse(
+        ai_readable.shop_llms_txt(page.shop, page.products, page_url=page.links.public_page,
+                                  mcp_url=page.links.mcp, ucp_url=f"{base}/.well-known/ucp"),
+        media_type=TEXT, headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/llms.txt", include_in_schema=False)
+def site_llms_txt(request: Request):
+    """Every published shop, with links to their llms.txt and the MCP/UCP entry points."""
+    settings = request.app.state.settings
+    shops = [(PublicShop(**s.model_dump()), shop_links(settings, s).public_page)
+             for s in published_shops(request.app.state.store)]
+    base = base_url(settings)
+    return PlainTextResponse(
+        ai_readable.site_llms_txt(shops, base=base, mcp_url=f"{base}/mcp",
+                                  ucp_url=f"{base}/.well-known/ucp"),
+        media_type=TEXT, headers={"Cache-Control": "no-cache"})

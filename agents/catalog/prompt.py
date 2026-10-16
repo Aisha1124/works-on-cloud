@@ -20,7 +20,8 @@ section with category "Add-ons".
 NEVER INVENT
 - Only output items and prices you can actually see. Never guess a missing price, never \
 fill a price from a similar item, never add items that are only in photos without text.
-- If a price is unreadable, set price to null, set confidence <= 0.4 and explain in notes.
+- If a price is unreadable, set price to null, set confidence <= 0.4, set unclear to true \
+and give a short unclear_reason.
 - Copy prices EXACTLY as printed (e.g. "$4.50", "S$4.5", "4.50", "$26"). Never calculate, \
 convert or split a price.
 
@@ -53,13 +54,17 @@ SECTIONS
 (e.g. "Rice", "Mini Cake Platters"). Use a single section with category "" if there are no \
 headings.
 
-CONFIDENCE
+CONFIDENCE AND UNCLEAR ITEMS
 - 0.9-1.0: name and price clearly readable. 0.6-0.8: some doubt. <=0.4: price or name \
-partly guessed from blur; explain in notes.
+partly guessed from blur.
+- Set unclear to true whenever the name, price or pack size of an item was hard to read \
+(blur, glare, smudge, cut off, handwriting, overlapping text), and give unclear_reason in a \
+few words (e.g. "price smudged", "name cut off at the edge"). The shop owner sees this \
+reason and checks the item. Omit both when the item is clear.
 
 OUTPUT SIZE
 - Leave out optional fields that are empty (local, unit, variants, options, description, \
-notes, warnings, and currency when it is SGD).
+unclear, unclear_reason, warnings, and currency when it is SGD).
 
 Also give shop_name_guess (shop name if printed, else empty) and warnings for whole-photo \
 problems (blurry, cut off, glare, not a menu).

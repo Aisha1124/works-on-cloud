@@ -53,9 +53,7 @@ def make_client(settings: Settings):
     try:
         return gemini.make_client(settings)
     except gemini.GeminiNotConfigured as exc:
-        raise CatalogExtractionError(
-            "Photo reading is not set up yet (GEMINI_API_KEY is missing)."
-        ) from exc
+        raise CatalogExtractionError(f"Photo reading is not set up yet ({exc})") from exc
 
 
 async def _call_gemini(client, model: str, jpeg: bytes) -> GeminiCatalog:
@@ -84,9 +82,11 @@ async def _call_gemini(client, model: str, jpeg: bytes) -> GeminiCatalog:
 
 
 async def extract_catalog_async(
-    images: list[bytes], *, client=None, settings: Settings | None = None
+    images: list[bytes], *, client=None, settings: Settings | None = None,
+    preprocessed: bool = False,
 ) -> CatalogDraft:
-    """Read 1+ menu photos into one merged CatalogDraft.
+    """Read 1+ menu photos into one merged CatalogDraft. `preprocessed=True`: the photos are
+    already cleaned JPEGs from images.preprocess (the upload route does that before storing).
 
     Raises ImageError (bad file, friendly message) or CatalogExtractionError (every photo
     failed, friendly message). If only some photos fail, the result carries a warning.
@@ -97,7 +97,8 @@ async def extract_catalog_async(
     if not settings.gemini_model:
         raise CatalogExtractionError("Photo reading is not set up yet (GEMINI_MODEL is missing).")
     # Pillow work is CPU-bound; keep it off the event loop. Raises ImageError before any API call.
-    jpegs = await asyncio.gather(*(asyncio.to_thread(preprocess, data) for data in images))
+    jpegs = images if preprocessed else await asyncio.gather(
+        *(asyncio.to_thread(preprocess, data) for data in images))
     client = client or make_client(settings)
 
     results = await asyncio.gather(

@@ -36,6 +36,20 @@ describe('customer shop page', () => {
     expect(box.textContent).toContain('Order 2 boxes of Kuih Lapis from mak-kuih for Saturday 10am pickup.')
   })
 
+  it('labels only the sample shop as an example', async () => {
+    stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: { ...PAGE, shop: { ...PAGE.shop, example: true } } } : undefined))
+    renderAt('/s/mak-kuih', routes)
+    expect(await screen.findByText('Example shop')).toBeTruthy()
+    expect(screen.getByText(/It is not a real business/)).toBeTruthy()
+  })
+
+  it('shows no example label on a real shop', async () => {
+    stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
+    renderAt('/s/mak-kuih', routes)
+    await screen.findByRole('region', { name: /Order with your AI assistant/ })
+    expect(screen.queryByText('Example shop')).toBeNull()
+  })
+
   it('still links home when the shop is not found', async () => {
     stubApi(() => undefined)
     renderAt('/s/nope', routes)

@@ -6,10 +6,10 @@ key (backend.api.deps.require_owner). Going live swaps the draft key for the rea
 which is returned once and stored only as a hash.
 """
 
+import asyncio
 import re
 import unicodedata
 from decimal import Decimal
-from pathlib import PurePath
 
 from fastapi import (
     APIRouter, BackgroundTasks, Body, Depends, File, HTTPException, Request, Response, UploadFile,
@@ -17,7 +17,8 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from agents.catalog import extract as catalog
-from agents.catalog.images import ImageError
+from agents.catalog.checks import menu_checks
+from agents.catalog.images import NOT_AN_IMAGE, ImageError, preprocess, sniff_image_type
 from backend.api.deps import caller, require_owner
 from backend import emails, mailer, owner_session
 from backend.audit import log_event
@@ -32,14 +33,16 @@ router = APIRouter(prefix="/api/shops")
 OWNER = [Depends(require_owner)]
 
 MAX_IMAGES = 5
-MAX_IMAGE_BYTES = 15 * 1024 * 1024
-IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "heic", "heif"}
+MAX_IMAGE_MB = 10
+MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024
 
 
 class DraftResponse(BaseModel):
     shop: Shop
     products: list[Product]
     warnings: list[str]
+    # product id -> why the owner should check it (agents/catalog/checks.py). Guidance only.
+    checks: dict[str, list[str]] = {}
     # Only on a new draft: the temporary key this browser uses until the shop goes live.
     draft_key: str | None = None
 
@@ -64,6 +67,13 @@ class ShopDetail(BaseModel):
     shop: Shop
     products: list[Product]
     links: ShopLinks
+    # product id -> why the owner should check it (agents/catalog/checks.py). Guidance only.
+    checks: dict[str, list[str]] = {}
+
+
+def shop_detail(settings, shop: Shop, products: list[Product], cls=None, **extra):
+    return (cls or ShopDetail)(shop=shop, products=products, links=shop_links(settings, shop),
+                               checks=menu_checks(products), **extra)
 
 
 class PublishResponse(ShopDetail):
@@ -106,33 +116,47 @@ def _shop_or_404(store, shop_id: str) -> Shop:
     return shop
 
 
-async def _read_images(images: list[UploadFile]) -> list[tuple[bytes, str]]:
+async def _read_images(images: list[UploadFile]) -> list[bytes]:
+    """1-5 photos, each at most 10 MB and really an image (checked from its bytes, not its
+    name or content type)."""
     if not 1 <= len(images) <= MAX_IMAGES:
         raise HTTPException(status_code=400, detail=f"Please upload 1 to {MAX_IMAGES} photos.")
-    blobs: list[tuple[bytes, str]] = []
+    raw: list[bytes] = []
     for upload in images:
         data = await upload.read(MAX_IMAGE_BYTES + 1)
         if not data:
             raise HTTPException(status_code=400, detail="One of the photos is empty.")
         if len(data) > MAX_IMAGE_BYTES:
-            raise HTTPException(status_code=400, detail="Each photo must be 15 MB or smaller.")
-        ext = PurePath(upload.filename or "").suffix.lstrip(".").lower()
-        blobs.append((data, ext if ext in IMAGE_EXTS else "img"))
-    return blobs
+            raise HTTPException(status_code=400,
+                                detail=f"Each photo must be {MAX_IMAGE_MB} MB or smaller.")
+        if sniff_image_type(data) is None:
+            raise HTTPException(status_code=400, detail=NOT_AN_IMAGE)
+        raw.append(data)
+    return raw
 
 
-async def _extract(blobs: list[tuple[bytes, str]], settings):
+async def _clean(raw: list[bytes]) -> list[bytes]:
+    """Rotate, shrink and re-encode as JPEG with no EXIF, so a photo's GPS location is never
+    stored or sent to Gemini."""
     try:
-        return await catalog.extract_catalog_async([d for d, _ in blobs], settings=settings)
+        # Pillow work is CPU-bound; keep it off the event loop.
+        return list(await asyncio.gather(*(asyncio.to_thread(preprocess, d) for d in raw)))
+    except ImageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _extract(jpegs: list[bytes], settings):
+    try:
+        return await catalog.extract_catalog_async(jpegs, settings=settings, preprocessed=True)
     except ImageError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except catalog.CatalogExtractionError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-def _save_extracted(store, settings, shop: Shop, blobs, draft) -> list[Product]:
+def _save_extracted(store, settings, shop: Shop, jpegs: list[bytes], draft) -> list[Product]:
     image_store = get_image_store(settings)
-    paths = [image_store.save(shop.id, data, ext) for data, ext in blobs]
+    paths = [image_store.save(shop.id, jpeg, "jpg") for jpeg in jpegs]  # cleaned, no EXIF
     products = [
         store.save_product(Product(shop_id=shop.id, **p.model_dump())) for p in draft.products
     ]
@@ -143,7 +167,7 @@ def _save_extracted(store, settings, shop: Shop, blobs, draft) -> list[Product]:
         action="catalog_extracted",
         entity_type="shop",
         entity_id=shop.id,
-        summary=f"Read {len(products)} items from {len(blobs)} photo(s)",
+        summary=f"Read {len(products)} items from {len(jpegs)} photo(s)",
         details={
             "model": settings.gemini_model,
             "images": paths,
@@ -157,29 +181,29 @@ def _save_extracted(store, settings, shop: Shop, blobs, draft) -> list[Product]:
 @router.post("/draft", response_model=DraftResponse)
 async def create_draft(request: Request, images: list[UploadFile] = File(default=[])) -> DraftResponse:
     """Upload 1-5 menu photos -> draft (unpublished) shop with the extracted products, plus a
-    draft key for this browser. No owner key needed; limited per client (each read is a
-    Gemini call)."""
-    blobs = await _read_images(images)
+    draft key for this browser. No owner key needed; limited to DRAFT_LIMIT reads per client
+    IP per 10 minutes (each photo is a Gemini call)."""
+    raw = await _read_images(images)
     if not request.app.state.draft_limiter.allow(caller(request)):
         raise HTTPException(status_code=429, detail=DRAFT_LIMIT_MESSAGE)
+    jpegs = await _clean(raw)
     settings = request.app.state.settings
     store = request.app.state.store
-    draft = await _extract(blobs, settings)
+    draft = await _extract(jpegs, settings)
 
     name = draft.shop_name_guess or "My shop"
     shop = Shop(name=name, slug=f"{slugify(name)}-{new_id()[:4]}", currency=draft.currency)
     store.save_shop(shop)
-    products = _save_extracted(store, settings, shop, blobs, draft)
+    products = _save_extracted(store, settings, shop, jpegs, draft)
     return DraftResponse(shop=shop, products=products, warnings=draft.warnings,
-                         draft_key=issue_owner_key(store, shop.id))
+                         checks=menu_checks(products), draft_key=issue_owner_key(store, shop.id))
 
 
 @router.get("/{shop_id}", response_model=ShopDetail, dependencies=OWNER)
 def get_shop(request: Request, shop_id: str) -> ShopDetail:
     store = request.app.state.store
     shop = _shop_or_404(store, shop_id)
-    return ShopDetail(shop=shop, products=store.list_products(shop.id),
-                      links=shop_links(request.app.state.settings, shop))
+    return shop_detail(request.app.state.settings, shop, store.list_products(shop.id))
 
 
 @router.post("/{shop_id}/photos", response_model=DraftResponse, dependencies=OWNER)
@@ -188,11 +212,14 @@ async def add_photos(request: Request, shop_id: str,
     """Read more menu photos into an existing shop. New items are added, nothing is replaced."""
     store = request.app.state.store
     shop = _shop_or_404(store, shop_id)
-    blobs = await _read_images(images)
+    jpegs = await _clean(await _read_images(images))
     settings = request.app.state.settings
-    draft = await _extract(blobs, settings)
-    products = _save_extracted(store, settings, shop, blobs, draft)
-    return DraftResponse(shop=shop, products=products, warnings=draft.warnings)
+    draft = await _extract(jpegs, settings)
+    products = _save_extracted(store, settings, shop, jpegs, draft)
+    # Checks over the whole menu (e.g. a new item that duplicates an old one), for the new items.
+    checks = menu_checks(store.list_products(shop.id))
+    return DraftResponse(shop=shop, products=products, warnings=draft.warnings,
+                         checks={p.id: checks[p.id] for p in products if p.id in checks})
 
 
 def unique_slug(store, shop: Shop) -> str:
@@ -256,8 +283,8 @@ def publish_shop(request: Request, response: Response, background: BackgroundTas
                   entity_type="shop", entity_id=shop.id,
                   summary=f"Sent a confirm-your-email link to {mailer.mask_email(shop.owner_email)}",
                   details={})
-    return PublishResponse(shop=shop, products=products, owner_key=owner_key,
-                           verify_sent_to=verify_sent_to, links=shop_links(settings, shop))
+    return shop_detail(settings, shop, products, PublishResponse, owner_key=owner_key,
+                       verify_sent_to=verify_sent_to)
 
 
 @router.post("/{shop_id}/verify-email", dependencies=OWNER)

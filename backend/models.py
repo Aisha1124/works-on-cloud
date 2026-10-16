@@ -64,6 +64,8 @@ class Shop(BaseModel):
     currency: str = "SGD"
     published: bool = False
     auto_approve_limit: Decimal = Decimal("150")
+    # Only the seeded sample shop (mak-kuih): its pages say it is an example, not a real shop.
+    example: bool = False
     # Set when the shop goes live. Owner-only: never part of a public or agent response.
     owner_email: str = ""
     email_verified: bool = False
@@ -93,6 +95,10 @@ class Product(BaseModel):
     available: bool = True
     description: str = ""
     confidence: float = Field(default=1.0, ge=0, le=1)
+    # Owner-only. Why the menu reader wants the owner to check this item (see
+    # agents/catalog/checks.py); cleared once the owner saves the item.
+    check_reasons: list[str] = Field(default_factory=list)
+    owner_checked: bool = False  # the owner saved this item themselves
 
 
 class OrderItem(BaseModel):

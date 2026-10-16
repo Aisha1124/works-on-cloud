@@ -1,12 +1,17 @@
-"""Sending email. Resend in production (RESEND_API_KEY); without a key, emails are only logged.
+"""Sending email: Gmail SMTP (EMAIL_PROVIDER=smtp, the default) or Resend (EMAIL_PROVIDER=resend).
+Without the chosen provider's credentials, emails are only logged.
 
 Email never blocks or breaks the thing that triggered it: send_safely() catches every error
 and logs it. Logs never contain links or tokens, only the subject and a masked recipient.
 """
 
+import asyncio
 import logging
+import smtplib
 from dataclasses import dataclass, field
-from typing import Protocol
+from email.message import EmailMessage
+from email.utils import make_msgid
+from typing import Callable, Protocol
 
 import httpx
 
@@ -15,6 +20,7 @@ from backend.api.config import Settings
 log = logging.getLogger(__name__)
 
 RESEND_URL = "https://api.resend.com/emails"
+RESEND_TEST_SENDER = "KampungCart <onboarding@resend.dev>"
 TIMEOUT_S = 10.0
 
 
@@ -39,6 +45,46 @@ def mask_email(address: str) -> str:
     return f"{name[:1]}***@{domain}" if domain else "***"
 
 
+def sender(settings: Settings) -> str:
+    """EMAIL_FROM, or the provider's default sender."""
+    if settings.email_from.strip():
+        return settings.email_from.strip()
+    if settings.email_provider == "smtp":
+        return f"KampungCart <{settings.smtp_user.strip()}>"
+    return RESEND_TEST_SENDER
+
+
+class SmtpMailer:
+    """SMTP with STARTTLS and login (Gmail: smtp.gmail.com:587 with an app password).
+    smtplib blocks, so it runs in a worker thread."""
+
+    def __init__(self, host: str, port: int, user: str, password: str, sender: str,
+                 smtp_factory: Callable[..., smtplib.SMTP] = smtplib.SMTP):
+        self.host, self.port = host, port
+        self.user, self.password = user, password
+        self.sender = sender
+        self.smtp_factory = smtp_factory  # tests pass a fake client
+
+    def message(self, email: Email) -> EmailMessage:
+        msg = EmailMessage()
+        msg["From"] = self.sender
+        msg["To"] = email.to
+        msg["Subject"] = email.subject
+        msg["Message-ID"] = make_msgid(domain=self.user.partition("@")[2] or None)
+        msg.set_content(email.text)
+        msg.add_alternative(email.html, subtype="html")
+        return msg
+
+    def _send(self, msg: EmailMessage) -> None:
+        with self.smtp_factory(self.host, self.port, timeout=TIMEOUT_S) as smtp:
+            smtp.starttls()
+            smtp.login(self.user, self.password)
+            smtp.send_message(msg)
+
+    async def send(self, email: Email) -> None:
+        await asyncio.to_thread(self._send, self.message(email))
+
+
 class ResendMailer:
     def __init__(self, api_key: str, sender: str, transport: httpx.AsyncBaseTransport | None = None):
         self.api_key = api_key
@@ -61,16 +107,30 @@ class ResendMailer:
 
 
 class LogMailer:
-    """No RESEND_API_KEY: say what would have been sent, without the content."""
+    """The provider's credentials are missing: say what would have been sent, without the content."""
+
+    def __init__(self, missing: str = "credentials"):
+        self.missing = missing
 
     async def send(self, email: Email) -> None:
-        log.info("email not sent (RESEND_API_KEY is empty): to=%s subject=%r",
-                 mask_email(email.to), email.subject)
+        log.info("email not sent (%s is empty): to=%s subject=%r",
+                 self.missing, mask_email(email.to), email.subject)
+
+
+def _secret(value) -> str:
+    return value.get_secret_value().strip() if value else ""
 
 
 def get_mailer(settings: Settings) -> Mailer:
-    key = settings.resend_api_key.get_secret_value().strip() if settings.resend_api_key else ""
-    return ResendMailer(key, settings.email_from) if key else LogMailer()
+    if settings.email_provider == "resend":
+        key = _secret(settings.resend_api_key)
+        return ResendMailer(key, sender(settings)) if key else LogMailer("RESEND_API_KEY")
+    user, password = settings.smtp_user.strip(), _secret(settings.smtp_password)
+    if not (user and password):
+        return LogMailer("SMTP_USER or SMTP_PASSWORD")
+    # Gmail shows app passwords in groups of four ("abcd efgh ..."); the spaces aren't part of it.
+    return SmtpMailer(settings.smtp_host, settings.smtp_port, user, password.replace(" ", ""),
+                      sender(settings))
 
 
 async def send_safely(settings: Settings, email: Email) -> bool:
@@ -79,6 +139,8 @@ async def send_safely(settings: Settings, email: Email) -> bool:
         await get_mailer(settings).send(email)
         return True
     except Exception as exc:  # noqa: BLE001 - email must never break an order or a login
-        log.error("email failed: to=%s subject=%r error=%s", mask_email(email.to),
-                  email.subject, str(exc)[:300])
+        # SMTP errors (e.g. a refused recipient) can quote the address: mask it there too.
+        error = str(exc).replace(email.to, mask_email(email.to))[:300]
+        log.error("email failed: to=%s subject=%r error=%s: %s", mask_email(email.to),
+                  email.subject, type(exc).__name__, error)
         return False

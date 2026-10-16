@@ -23,6 +23,7 @@ describe('shop owner login', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Email me a sign-in link' }))
     expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeTruthy()
     expect(screen.getByRole('status').textContent).toContain('siti@example.sg')
+    expect(screen.getByText(/Check your spam folder if you don't see our email\./)).toBeTruthy()
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ email: 'siti@example.sg' })
   })
 

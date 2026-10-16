@@ -22,12 +22,13 @@ from agents.catalog.schema import (
 from backend.models import ProductOption, Variant
 
 
-def gp(name="Kuih Lapis", price=None, variants=(), options=(), unit="", confidence=0.95, notes=""):
+def gp(name="Kuih Lapis", price=None, variants=(), options=(), unit="", confidence=0.95,
+       unclear=False, unclear_reason=""):
     return GeminiProduct(
         name=name, price=price, unit=unit,
         variants=[GeminiVariant(label=lbl, price=p) for lbl, p in variants],
         options=[GeminiOption(name=n, choices=list(c)) for n, c in options],
-        confidence=confidence, notes=notes,
+        confidence=confidence, unclear=unclear, unclear_reason=unclear_reason,
     )
 
 

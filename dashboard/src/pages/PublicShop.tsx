@@ -8,7 +8,7 @@ import { api } from '../lib/api'
 import { addLine, useCartQuote } from '../lib/cart'
 import { useLoad } from '../lib/hooks'
 import type { CartLine, Product, PublicShopPage, WebOrder } from '../lib/types'
-import { EmptyState, PriceTag, ReceiptCard, ReceiptDivider, Signboard, Skeleton, buttonClass, useToast } from '../ui'
+import { EmptyState, PriceTag, ReceiptCard, ReceiptDivider, Signboard, Skeleton, Stamp, buttonClass, useToast } from '../ui'
 
 const NO_CATEGORY = 'More'
 
@@ -93,6 +93,12 @@ export function PublicShop() {
         <Skeleton rows={6} label="Loading the menu" />
       ) : (
         <>
+          {shop.example && (
+            <p className="flex flex-wrap items-center gap-3 text-sm text-ink-soft">
+              <Stamp kind="check" label="Example shop" size="sm" />
+              <span>A sample menu to try KampungCart. It is not a real business.</span>
+            </p>
+          )}
           <Signboard title={shop.name} subtitle={shop.tagline || undefined} plate={shop.shop_type || 'KampungCart shop'} />
 
           {(shop.hours || shop.address || shop.phone) && (

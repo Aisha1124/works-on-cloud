@@ -53,7 +53,7 @@ function EmailLink({ title }: { title: string }) {
         <p>
           We sent a sign-in link to <b>{email.trim()}</b>. Open it on this phone or computer and tap “Open my dashboard”.
         </p>
-        <p className="text-sm text-ink-soft">{sent} Nothing there? Check your spam folder.</p>
+        <p className="text-sm text-ink-soft">{sent} Check your spam folder if you don't see our email.</p>
         <Button variant="secondary" className="self-start" onClick={() => setSent(null)}>
           Use a different email
         </Button>

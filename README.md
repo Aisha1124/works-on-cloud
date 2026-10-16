@@ -15,7 +15,7 @@ Gemini · Google ADK · Cloud Run · Firestore · Cloud Storage · Secret Manage
 
 The catalog extraction prompt was first prototyped and tested in Google AI Studio with a real Singapore home-bakery price list.
 
-One Cloud Run container (asia-southeast1) serves the API, the MCP server, the UCP endpoints and the built dashboard. It is deployed with `gcloud run deploy --source .`, which uses Cloud Build only to build the image.
+One Cloud Run container (asia-southeast1) serves the API, the MCP server, the UCP endpoints and the built dashboard. In production Gemini runs through Vertex AI (`GOOGLE_GENAI_USE_VERTEXAI=true`, the Cloud Run service account, no API key) at the `global` location, because the Gemini Interactions API the app uses is served from `global` only on Vertex AI (preview). Local development uses `GEMINI_API_KEY`. It is deployed with `gcloud run deploy --source .`, which uses Cloud Build only to build the image.
 
 Deploy steps (from Google Cloud Shell) are in [infra/DEPLOY.md](infra/DEPLOY.md). Production currently
 runs with `STORE_BACKEND=local`: data lives in the container and is reset on every restart, and the
@@ -55,9 +55,23 @@ npm scripts call each tool with `node ./node_modules/...` directly. Keep that pa
   items, SGD total, pickup time, the customer's first name, the masked phone (`****4567`) and the
   channel. Held orders add the plain-English reason and a **Review order** button that signs the
   owner in.
-- **Sample shop:** `mak-kuih` is seeded at startup. Judges can sign in with the backup key
-  `OWNER_KEY` (Shop owner login → Use backup key instead). Set `SAMPLE_OWNER_EMAIL` to receive its
-  order emails and sign in by email.
+- **Check your menu:** items the owner should look at are highlighted in yellow with
+  "Please check this" and the reason, and the Go live bar says "N items need a quick check".
+  Two kinds of signal are combined, because Gemini's confidence alone isn't reliable:
+  Gemini marks items it found hard to read ("unclear", with a short reason), and Python rules
+  check the whole menu: missing price, a printed price that isn't a clear number (e.g. "$l.5O"),
+  a price more than 5x above or below the rest of its section, duplicate names, and an empty pack
+  size where most of the section has one. Flags are guidance: the owner can always go live.
+  Saving an item clears its read-time flags.
+- **Email:** Gmail SMTP by default (`EMAIL_PROVIDER=smtp`, `SMTP_USER` + a Gmail app password in
+  `SMTP_PASSWORD`), which can reach any owner without a verified domain. `EMAIL_PROVIDER=resend`
+  keeps Resend working. Without the provider's credentials, emails are only logged. The Go live
+  screen and login page say "Check your spam folder if you don't see our email."
+- **Sample shop:** `mak-kuih` is seeded at startup. It is clearly an example: its shop page shows
+  an "Example shop" label, its phone is the placeholder `+65 0000 0000`, its address is only
+  "Tampines, Singapore", and its llms.txt and MCP shop info say it is an example. No other shop
+  shows the label. Judges can sign in with the backup key `OWNER_KEY` (Shop owner login → Use
+  backup key instead). Set `SAMPLE_OWNER_EMAIL` to receive its order emails and sign in by email.
 
 ## Security
 - **One key per shop.** Owner keys are 256-bit random tokens (`kc_…`). Only a SHA-256 hash is
@@ -78,8 +92,16 @@ npm scripts call each tool with `node ./node_modules/...` directly. Keep that pa
   dashboard's `X-Requested-With` header (CSRF guard).
 - **Rate limits** (per client IP, in memory): 10 wrong owner keys or bad sign-in links per 5
   minutes (then 429), 5 sign-in emails per IP and 3 per email address per 15 minutes, 3 "send the
-  confirm link again" per shop per 15 minutes, 5 new menu-photo reads per 10 minutes, and 10
-  orders a minute across MCP, UCP and the shop page.
+  confirm link again" per shop per 15 minutes, 5 new menu-photo reads (the upload that needs no
+  sign-in) per 10 minutes, and 10 orders a minute across MCP, UCP and the shop page.
+- **Menu photo uploads:** at most 5 photos per read, 10 MB each, images only (JPEG, PNG, WebP,
+  HEIC). The type is checked from the file's bytes, not its name. Every photo is re-encoded as a
+  fresh JPEG before it is stored or sent to Gemini, so EXIF data (including GPS location) is
+  dropped.
+- **Gemini usage is logged honestly.** Every Gemini attempt (a retry counts) writes one
+  `gemini_call n=... label=... model=... ok=... seconds=... in_tokens=... out_tokens=...` log line,
+  with no prompt text, photo or customer data. `infra/DEPLOY.md` shows how to count them.
+  Interactions are sent with `store=False`.
 - **Owner emails stay private.** The owner's email is never in the public shop page, MCP or UCP
   responses. Logs only show it masked (`s***@gmail.com`) and never contain sign-in links.
 - **Email never blocks an order.** Order emails are sent after the order is saved, in the
@@ -165,6 +187,15 @@ Every live shop has a public page at `/s/{shop_slug}` (the sample shop is `/s/ma
 add items, pick a pickup time, enter a name and phone number and place the order. No key, no
 signup. The page shows "Confirmed" or "Sent to the owner for approval" with the reason in plain
 English, and updates when the owner decides.
+
+### AI-readable shop pages (no setup)
+Every `/s/{shop_slug}` page is server-rendered with schema.org JSON-LD: a `FoodEstablishment`
+(`Bakery` for bakers) with name, address, telephone, `openingHoursSpecification` and
+`hasMenu` → `Menu` → `MenuSection` → `MenuItem` → `Offer` (price, `priceCurrency` SGD). Crawlers
+that don't run JavaScript can read it. The page head links to `/s/{shop_slug}/llms.txt`, a plain
+text version (menu with prices, opening hours, pickup rules, how to order by link or MCP).
+`/llms.txt` lists every live shop. Opening hours are only included when the free-text hours can
+be read (e.g. "Tue-Sun 9am-6pm").
 
 ### UCP
 The UCP discovery profile is at `http://localhost:8000/.well-known/ucp`. This is a partial
