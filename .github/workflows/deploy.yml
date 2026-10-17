@@ -92,7 +92,10 @@ jobs:
       - name: Smoke test
         id: smoke
         run: |
-          url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
+          # The BASE_URL Terraform set on the service (the project-number run.app URL). Not
+          # status.url: that is the legacy hash URL, which the MCP host allow-list rejects.
+          url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json \
+            | jq -r '.spec.template.spec.containers[0].env[] | select(.name=="BASE_URL") | .value')
           echo "Testing $url"
           for i in $(seq 1 10); do
             curl -fsS "$url/api/health" | grep -q '"ok":true' && break

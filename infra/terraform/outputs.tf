@@ -1,7 +1,13 @@
 # Values the GitHub workflows need (set them as repository variables, see infra/README.md).
 
 output "service_url" {
-  value = google_cloud_run_v2_service.app.uri
+  description = "The URL to use (MCP only accepts this host)."
+  value       = local.run_url
+}
+
+output "legacy_service_url" {
+  description = "Cloud Run's hash URL. Works for the API, but /mcp rejects it (421): don't share it."
+  value       = google_cloud_run_v2_service.app.uri
 }
 
 output "base_url" {
