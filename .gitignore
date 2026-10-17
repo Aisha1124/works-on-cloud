@@ -3,6 +3,16 @@
 service-account*.json
 secrets/
 
+# Terraform (the .terraform.lock.hcl provider lock IS committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+terraform.tfvars
+*.auto.tfvars
+crash.log
+
 # Python
 .venv/
 __pycache__/

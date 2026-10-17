@@ -62,10 +62,16 @@ def mask_phone(phone: str) -> str:
 
 
 def client_key(headers, client_host: str | None) -> str:
-    """Who is calling, for rate limits. Cloud Run puts the caller first in X-Forwarded-For."""
+    """Who is calling, for rate limits.
+
+    Cloud Run's front end APPENDS the real caller IP to X-Forwarded-For, and keeps whatever the
+    caller sent in front of it. So the rightmost entry is the trustworthy one; the leftmost can
+    be set to anything by the caller (rate-limit bypass). If an external load balancer is ever
+    put in front of Cloud Run, it appends its own entry and this must take the second-to-last.
+    """
     forwarded = (headers or {}).get("x-forwarded-for", "") if headers is not None else ""
-    first = forwarded.split(",")[0].strip()
-    return first or client_host or "unknown"
+    entries = [e.strip() for e in forwarded.split(",") if e.strip()]
+    return (entries[-1] if entries else "") or client_host or "unknown"
 
 
 class RateLimiter:

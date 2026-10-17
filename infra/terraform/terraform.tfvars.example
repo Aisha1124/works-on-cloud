@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored) for local runs. In CI these come from GitHub variables
+# TF_VAR_billing_account and TF_VAR_alert_email.
+billing_account = "XXXXXX-XXXXXX-XXXXXX"
+alert_email     = "you@example.com"
+
+# Optional overrides
+# budget_amount   = 50
+# store_backend   = "firestore"   # once FirestoreStore/GcsImageStore are implemented
+# max_instances   = 3             # only with store_backend = "firestore"
+# custom_base_url = "https://kampungcart.example.sg"

@@ -1,0 +1,96 @@
+# Terraform for infra/terraform.
+#   PR touching infra/  -> read-only plan, posted as a PR comment (gh-tf-plan)
+#   push to main        -> plan + apply in the "production" environment (gh-terraform),
+#                          which needs a reviewer's approval in GitHub before it runs
+#
+# Repository variables: GCP_PROJECT_ID, WIF_PROVIDER, TF_PLAN_SA, TERRAFORM_SA,
+#                       TF_BILLING_ACCOUNT, TF_ALERT_EMAIL
+name: Infra
+
+on:
+  pull_request:
+    paths: ["infra/terraform/**", ".github/workflows/infra.yml"]
+  push:
+    branches: [main]
+    paths: ["infra/terraform/**", ".github/workflows/infra.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-production
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+  TF_VAR_billing_account: ${{ vars.TF_BILLING_ACCOUNT }}
+  TF_VAR_alert_email: ${{ vars.TF_ALERT_EMAIL }}
+
+defaults:
+  run:
+    working-directory: infra/terraform
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_PLAN_SA }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+      - run: terraform init
+      - id: plan
+        run: |
+          set +e
+          terraform plan -lock=false -no-color -detailed-exitcode > plan.txt 2>&1
+          code=$?
+          cat plan.txt
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" = 1 ] && exit 1 || exit 0
+      - name: Comment plan on the PR
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync('infra/terraform/plan.txt', 'utf8');
+            if (plan.length > 60000) plan = plan.slice(-60000);
+            const changes = '${{ steps.plan.outputs.exitcode }}' === '2';
+            const body = `### Terraform plan: ${changes ? 'changes' : 'no changes'}\n` +
+              `<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, body,
+            });
+
+  apply:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production # required reviewer + main-only, set in GitHub settings
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TERRAFORM_SA }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+      - run: terraform init
+      - run: terraform plan -no-color -out=tfplan
+      - run: terraform apply -no-color tfplan

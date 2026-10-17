@@ -350,6 +350,29 @@ def test_unknown_chat_or_other_shop(client, shop, llm):
     assert r.status_code == 410 and r.json()["detail"] == assistant.TIMED_OUT
 
 
+def test_deploy_smoke_check_unknown_chat_is_410_without_a_model_call(client, app, shop,
+                                                                     monkeypatch):
+    """deploy.yml posts an unknown chat id: 410 means the route is up and Gemini is configured
+    (the model object is built, but never called); 503 means Gemini isn't configured."""
+    app.state.settings = app.state.shop_assistant.settings = Settings(
+        _env_file=None, gemini_model="gemini-x", google_genai_use_vertexai=True,
+        gcp_project_id="proj")
+    calls = []
+
+    async def no_call(self, llm_request, stream=False):
+        calls.append(llm_request)
+        yield say("never")
+
+    monkeypatch.setattr(assistant, "make_model", real_make_model)
+    monkeypatch.setattr(type(real_make_model(app.state.settings)), "generate_content_async",
+                        no_call)
+    r = send(client, "hi", "smoke-test")
+    assert r.status_code == 410 and calls == []
+    monkeypatch.setattr(assistant, "make_model", lambda s: (_ for _ in ()).throw(
+        gemini.GeminiNotConfigured("off")))
+    assert send(client, "hi", "smoke-test").status_code == 503
+
+
 def test_not_configured_is_friendly_and_the_form_still_works(client, app, shop):
     r = send(client, "hi")  # no fake model: the real one isn't configured in tests
     assert r.status_code == 503 and r.json()["detail"] == assistant.UNAVAILABLE
