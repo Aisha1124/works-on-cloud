@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents import gemini
+from agents.shopper import assistant
 from backend import mailer
 from backend.api.config import Settings
 from backend.api.main import create_app
@@ -26,6 +27,8 @@ def no_live_gemini(monkeypatch):
         raise gemini.GeminiNotConfigured("live Gemini is disabled in tests")
 
     monkeypatch.setattr(gemini, "make_client", refuse)
+    # The shop assistant's ADK model too (tests/test_shop_assistant.py passes a fake one).
+    monkeypatch.setattr(assistant, "make_model", refuse)
 
 
 TEST_OWNER_KEY = "kc_test-owner-key"

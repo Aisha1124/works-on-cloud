@@ -29,13 +29,82 @@ describe('customer shop page', () => {
     expect((await screen.findByTestId('landed')).dataset.path).toBe('/')
   })
 
-  it('says any AI can read the shop from its link and only MCP apps can order, with one example sentence', async () => {
+  it('says customers can order by chatting here, and AI apps can connect through MCP', async () => {
     stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
     renderAt('/s/mak-kuih', routes)
-    const box = await screen.findByRole('region', { name: 'Ask your AI assistant about this shop' })
-    expect(box.textContent).toContain("Share this page's link with ChatGPT, Gemini or Claude to ask about the menu, prices and opening hours.")
-    expect(box.textContent).toContain('AI apps that support MCP can also place pickup orders: add https://kc.example/mcp as a connector.')
+    const box = await screen.findByRole('region', { name: 'Ordering with AI' })
+    expect(box.textContent).toContain('Order by chatting with our AI assistant on any shop page, no setup needed. AI apps can also connect through MCP.')
+    expect(box.textContent).toContain('add https://kc.example/mcp as a connector')
+    expect(box.textContent).toContain("Any AI (ChatGPT, Gemini or Claude) can also read this page's link")
     expect(box.textContent).toContain('Order 2 boxes of Kuih Lapis from mak-kuih for Saturday 10am pickup.')
+  })
+
+  it('shows the Order with AI chat above the menu and order form', async () => {
+    stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
+    renderAt('/s/mak-kuih', routes)
+    const chat = await screen.findByRole('region', { name: 'Order with AI' })
+    const menu = screen.getByRole('heading', { name: 'Kuih' })
+    expect(chat.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(chat.textContent).toContain('2 boxes of Kuih Lapis 20 pcs for Saturday 10am')
+  })
+
+  it('chats with the assistant and shows the order status link', async () => {
+    const calls = stubApi((url, init) => {
+      if (url === '/api/public/shops/mak-kuih') return { body: PAGE }
+      if (url === '/api/public/shops/mak-kuih/chat') {
+        const sent = JSON.parse(String(init?.body))
+        if (sent.chat_id === null) return { body: { chat_id: 'c1', reply: 'That is S$32.00. Shall I place this order?', orders: [], turns_left: 11 } }
+        return {
+          body: {
+            chat_id: 'c1',
+            reply: 'Done! Your order is confirmed.',
+            orders: [{ order_id: 'abcdef123456', status: 'confirmed', status_url: 'http://localhost:8000/o/abcdef123456?t=tok', subtotal: '32.00', pickup_time: '2026-10-17T10:00:00+08:00' }],
+            turns_left: 10,
+          },
+        }
+      }
+      return undefined
+    })
+    renderAt('/s/mak-kuih', routes)
+    const box = await screen.findByLabelText('Message to the shop assistant')
+    fireEvent.change(box, { target: { value: '2 boxes of kuih lapis 20 pcs, Siti +65 9123 4567' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('That is S$32.00. Shall I place this order?')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Message to the shop assistant'), { target: { value: 'yes' } })
+    fireEvent.keyDown(screen.getByLabelText('Message to the shop assistant'), { key: 'Enter' })
+    expect(await screen.findByText('Done! Your order is confirmed.')).toBeTruthy()
+    const link = screen.getByRole('link', { name: /See your order status/ })
+    expect(link.getAttribute('href')).toBe('/o/abcdef123456?t=tok')
+    expect(screen.getByText('Confirmed')).toBeTruthy()
+    const chatCalls = calls.filter((c) => c.url.endsWith('/chat')).map((c) => JSON.parse(String(c.init?.body)))
+    expect(chatCalls).toEqual([
+      { chat_id: null, message: '2 boxes of kuih lapis 20 pcs, Siti +65 9123 4567' },
+      { chat_id: 'c1', message: 'yes' },
+    ])
+  })
+
+  it('shows a friendly message when the assistant is down, and the order form still works', async () => {
+    stubApi((url) => {
+      if (url === '/api/public/shops/mak-kuih') return { body: PAGE }
+      if (url.endsWith('/chat')) return { status: 503, body: { detail: "The AI assistant isn't available right now. You can still order with the form below." } }
+      return undefined
+    })
+    renderAt('/s/mak-kuih', routes)
+    fireEvent.click(await screen.findByRole('button', { name: /Try:/ }))
+    expect((await screen.findByRole('alert')).textContent).toContain("The AI assistant isn't available right now. You can still order with the form below.")
+    expect(screen.getAllByRole('button', { name: /Add/ }).length).toBeGreaterThan(0)
+  })
+
+  it('offers a new chat when the old one has ended', async () => {
+    stubApi((url) => {
+      if (url === '/api/public/shops/mak-kuih') return { body: PAGE }
+      if (url.endsWith('/chat')) return { status: 410, body: { detail: 'This chat has ended or timed out. Start a new chat to continue.' } }
+      return undefined
+    })
+    renderAt('/s/mak-kuih', routes)
+    fireEvent.click(await screen.findByRole('button', { name: /Try:/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start a new chat' }))
+    expect(screen.getByLabelText('Message to the shop assistant')).toBeTruthy()
   })
 
   it('labels only the sample shop as an example', async () => {
@@ -48,7 +117,7 @@ describe('customer shop page', () => {
   it('shows no example label on a real shop', async () => {
     stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
     renderAt('/s/mak-kuih', routes)
-    await screen.findByRole('region', { name: /Ask your AI assistant/ })
+    await screen.findByRole('region', { name: 'Ordering with AI' })
     expect(screen.queryByText('Example shop')).toBeNull()
   })
 
