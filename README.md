@@ -10,7 +10,7 @@ Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
 **Live:** `https://<LIVE-URL>` (placeholder: the deployed Cloud Run URL goes here)
 
-Any AI can read the shop's menu from its link; AI apps connected through MCP can also place orders.
+Order by chatting with our AI assistant on any shop page, no setup needed. AI apps can also connect through MCP.
 
 ### Try it in 2 minutes
 1. **Owner: photo → live shop.** Open the live URL, tap **I run a shop · Upload my menu** and drop a photo of a
@@ -28,7 +28,13 @@ Any AI can read the shop's menu from its link; AI apps connected through MCP can
 4. **Owner approves.** Sign in to the example shop (below), open **Orders → Needs approval** and
    tap **Approve**. The customer's status page turns to **Confirmed** within about 10 seconds.
    The **Audit log** tab shows every step and who did it (customer, risk agent, system, owner).
-5. **AI order via MCP.** In Claude (Settings → Connectors → Add custom connector) add
+5. **Order by chatting.** On `https://<LIVE-URL>/s/mak-kuih`, type in the **Order with AI** box:
+   *"2 boxes of kuih lapis 20 pcs for Saturday 10am"*. The KampungCart Shop Assistant shows the
+   options, quotes the total from the menu, suggests pickup times the shop can take, asks for a
+   name and phone, and asks "Shall I place this order?". Say **yes** and it places the order and
+   shows the private status link. Ask for **10 boxes of 40 pcs** and it tells you the owner must
+   approve, and the order goes to **Needs approval** like any other.
+6. **AI order via MCP.** In Claude (Settings → Connectors → Add custom connector) add
    `https://<LIVE-URL>/mcp`, then ask: *"Order 2 boxes of Kuih Lapis, 20 pcs, from mak-kuih for
    pickup this Saturday at 10am. Name Siti, phone +65 9123 4567."* The agent finds the shop, gets
    a quote and places the order; it appears in the owner's Orders tab as "via MCP". Ask it for a
@@ -184,7 +190,7 @@ Not done yet: changing the owner email or rotating the backup key from the dashb
 - Also set there: approval timeout, cancel cutoff and the auto-approve limit.
 
 ## Connect an AI agent
-Any AI can read the shop's menu from its link; AI apps connected through MCP can also place orders.
+Order by chatting with our AI assistant on any shop page, no setup needed. AI apps can also connect through MCP.
 Every published shop can be used by any AI agent that speaks MCP (Claude, Gemini, ChatGPT with
 MCP support) through one MCP server, using the streamable HTTP transport:
 
@@ -252,6 +258,30 @@ add items, pick a day and a time from the free pickup slots, enter a name and ph
 email for updates, if they like) and place the order. No key, no signup. The page shows
 "Confirmed" or "Sent to the owner for approval" with the reason in plain English, the private
 status link, and updates when the owner decides.
+
+### Order with AI (chat on the shop page)
+Above the menu on every shop page, customers can order by chatting with the **KampungCart Shop
+Assistant**: one Google ADK agent (`agents/shopper/assistant.py`) on Gemini, with the same model
+settings as the rest of the app (`GEMINI_MODEL`; Vertex AI in production, `GEMINI_API_KEY`
+locally; one retry). Its only tools are this app's own MCP tools `get_menu`, `get_quote`,
+`place_pickup_order` and `get_order_status`, used through ADK's MCP toolset over the real `/mcp`
+route (in process, no network hop). So every MCP rule applies: menu prices, valid pickup times,
+owner approval, idempotency, the order rate limit and the audit log (as "KampungCart Shop
+Assistant via MCP").
+
+Enforced in code, not only in the prompt:
+- every tool call is pinned to the page's shop;
+- `place_pickup_order` only runs after the customer answers "Shall I place this order?" with a
+  clear yes ("yes but…" doesn't count), once per yes, with an idempotency key made from the chat;
+- `get_order_status` only answers for orders placed in that chat, so no one else's order can be read;
+- prices sent by the model are dropped; the menu sets every price.
+
+Limits to control cost: 500 characters per message, 12 messages and 80,000 tokens per chat, 6
+model calls and 60 seconds per message, 1,024 output tokens per call, 30 messages per client per
+15 minutes and 300 messages per hour for the whole site. Chats are kept in the instance's memory
+only (never written to the database) and end after 30 idle minutes. If Gemini or ADK fails, the
+chat shows a friendly sentence and the order form below keeps working. The AI can still word
+things wrongly; the summary and status link come from the shop's own tools.
 
 ### AI-readable shop pages (no setup)
 Every `/s/{shop_slug}` page is server-rendered with schema.org JSON-LD: a `FoodEstablishment`

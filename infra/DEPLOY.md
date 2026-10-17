@@ -35,6 +35,14 @@ dashboard. `gcloud run deploy --source .` sends the repo to Cloud Build, which b
   `.gcloudignore` and `.dockerignore`.
 - **`BASE_URL` must be the service URL** (`https://SERVICE-PROJECT_NUMBER.REGION.run.app`). The
   MCP server rejects requests whose Host doesn't match it (HTTP 421).
+- **"Order with AI" chat** (Google ADK agent on each shop page) needs **no new env var, secret or
+  role**: it uses the same `GEMINI_MODEL`, `GOOGLE_GENAI_USE_VERTEXAI`, `GCP_PROJECT_ID` and
+  `GEMINI_LOCATION` as the menu reader (Vertex AI `generateContent`, location `global`), and the
+  same `roles/aiplatform.user`. Its tools are the app's own `/mcp` route, called in process.
+  Chats are kept in the instance's memory only (never in Firestore), so step 9 deploys with
+  `--session-affinity`: Cloud Run then sends a browser back to the same instance. If an instance
+  is replaced mid-chat, the chat says it timed out and the customer starts a new one; orders are
+  never lost (they are in Firestore). Chat rate-limit counters use the same `rate_limits` TTL.
 - **Background jobs** (expiring held orders after the shop's timeout, erasing customer details 90
   days after pickup) run every 5 minutes while an instance is up, *and* whenever an order is read.
   So expiry is correct even when Cloud Run scales to zero; it just happens on the next visit.
@@ -81,14 +89,18 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$S
 gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$SA" --role=roles/run.builder
 
 # 9. Deploy (answer Y if asked to create an Artifact Registry repository). --max-instances=10
-#    is a cost cap only; the app no longer needs a single instance.
-gcloud run deploy "$SERVICE" --source . --region "$REGION" --allow-unauthenticated --max-instances=10 --set-env-vars "^|^GEMINI_MODEL=gemini-3.8-flash|GOOGLE_GENAI_USE_VERTEXAI=true|GEMINI_LOCATION=global|STORE_BACKEND=firestore|FIRESTORE_DATABASE=(default)|GCS_BUCKET=$BUCKET|BASE_URL=$URL|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|EMAIL_PROVIDER=smtp|SMTP_HOST=smtp.gmail.com|SMTP_PORT=587|SAMPLE_OWNER_EMAIL=$SAMPLE_OWNER_EMAIL" --set-secrets "OWNER_KEY=OWNER_KEY:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASSWORD=SMTP_PASSWORD:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
+#    is a cost cap only; the app no longer needs a single instance. --session-affinity keeps a
+#    customer's "Order with AI" chat on the instance that holds it.
+gcloud run deploy "$SERVICE" --source . --region "$REGION" --allow-unauthenticated --max-instances=10 --session-affinity --set-env-vars "^|^GEMINI_MODEL=gemini-3.8-flash|GOOGLE_GENAI_USE_VERTEXAI=true|GEMINI_LOCATION=global|STORE_BACKEND=firestore|FIRESTORE_DATABASE=(default)|GCS_BUCKET=$BUCKET|BASE_URL=$URL|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|EMAIL_PROVIDER=smtp|SMTP_HOST=smtp.gmail.com|SMTP_PORT=587|SAMPLE_OWNER_EMAIL=$SAMPLE_OWNER_EMAIL" --set-secrets "OWNER_KEY=OWNER_KEY:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASSWORD=SMTP_PASSWORD:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
 
 # 10. Check /mcp lists the tools
 curl -s -X POST "$URL/mcp" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | python3 -c "import json,sys; print([t['name'] for t in json.load(sys.stdin)['result']['tools']])"
 
 # 11. AI-readable pages: llms.txt and the JSON-LD on the shop page
 curl -s "$URL/llms.txt"; curl -s "$URL/s/mak-kuih/llms.txt"; curl -s "$URL/s/mak-kuih" | grep -o '"@type":"Bakery"'
+
+# 12. "Order with AI" answers (uses about 2 Gemini calls; prints the assistant's reply)
+curl -s -X POST "$URL/api/public/shops/mak-kuih/chat" -H "Content-Type: application/json" -d '{"message":"What sizes does kuih lapis come in?"}' | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('reply') or d)"
 ```
 
 Step 10 should print
@@ -119,7 +131,8 @@ curl -s "$URL/api/public/orders/$(echo "$STATUS" | sed -E 's#.*/o/([^?]+)\?t=(.*
   `gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE AND textPayload:\"email failed\"" --freshness=1h --limit=5 --format="value(textPayload)"`
 
 ## Gemini usage (for honest reporting)
-Every Gemini attempt writes one `gemini_call` line (a retry is a second line). It holds a running
+Every Gemini attempt writes one `gemini_call` line (a retry is a second line). The shop-page
+chat's lines have `label=shop_assistant`; one chat message is usually 2-3 calls. It holds a running
 count per instance, the label, the model, ok/failed, seconds and token counts, and never any
 prompt text or customer data. Count the calls in the last 30 days:
 `gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE AND textPayload:gemini_call" --freshness=30d --format="value(textPayload)" | wc -l`
