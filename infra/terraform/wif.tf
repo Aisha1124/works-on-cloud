@@ -23,6 +23,9 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.environment" = "assertion.environment"
     # "owner/repo@refs/heads/main": lets bindings target one branch of one repo.
     "attribute.repo_ref" = "assertion.repository + '@' + assertion.ref"
+    # "production@refs/heads/main": environment AND branch, so apply access doesn't depend on
+    # GitHub environment settings alone (a missing environment is auto-created unprotected).
+    "attribute.env_ref" = "(has(assertion.environment) ? assertion.environment : 'none') + '@' + assertion.ref"
   }
 
   # Only tokens from this repo are accepted at all; every other GitHub repo is rejected here.
@@ -40,12 +43,12 @@ resource "google_service_account_iam_member" "deployer_wif" {
   member             = "${local.wif_pool}/attribute.repo_ref/${var.github_repo}@refs/heads/main"
 }
 
-# Terraform apply: only jobs running in the GitHub "production" environment. That environment
-# is limited to the main branch and has a required reviewer (configured in GitHub settings).
+# Terraform apply: only jobs in the GitHub "production" environment AND on main. GitHub's
+# environment protection (required reviewer) adds the human approval on top.
 resource "google_service_account_iam_member" "terraform_wif" {
   service_account_id = google_service_account.terraform.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "${local.wif_pool}/attribute.environment/production"
+  member             = "${local.wif_pool}/attribute.env_ref/production@refs/heads/main"
 }
 
 # Terraform plan (read-only): any workflow in the repo, e.g. PR plans.
