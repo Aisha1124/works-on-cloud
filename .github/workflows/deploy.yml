@@ -104,8 +104,12 @@ jobs:
           done
           curl -fsS "$url/.well-known/ucp" | grep -q "$url/ucp/v1" \
             || { echo "UCP profile does not advertise $url"; exit 1; }
-          code=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/shops")
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/shops/mak-kuih/orders")
           [ "$code" = 401 ] || { echo "owner routes not protected (got $code)"; exit 1; }
+          tools=$(curl -fsS -X POST "$url/mcp" -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools | length')
+          [ "$tools" -ge 6 ] || { echo "MCP lists $tools tools, expected 6"; exit 1; }
           code=$(curl -s -o /dev/null -w '%{http_code}' "$url/")
           [ "$code" = 200 ] || { echo "dashboard not served (got $code)"; exit 1; }
           echo "Smoke test passed"

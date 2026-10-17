@@ -1,5 +1,9 @@
 # Deploy to Cloud Run (from Google Cloud Shell)
 
+> **`kampungcart-prod` is managed by Terraform and GitHub Actions**. See [README.md](README.md).
+> Merging to `main` deploys. Use this guide only to stand up a separate project by hand; running
+> its commands against `kampungcart-prod` would drift from the Terraform state.
+
 One container on Cloud Run (asia-southeast1) serves the API, `/mcp`, the UCP routes and the
 dashboard. `gcloud run deploy --source .` sends the repo to Cloud Build, which builds the root
 `Dockerfile`. There is no CI/CD pipeline.

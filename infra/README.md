@@ -66,7 +66,15 @@ gcloud run services update kampungcart --region asia-southeast1 --project kampun
   --update-labels=secret-rotated=$(date +%s)
 ```
 
-**Read the owner key** (for the dashboard): `gcloud secrets versions access latest --secret owner-key --project kampungcart-prod`
+**Read the owner key** of the sample shop `mak-kuih`: `gcloud secrets versions access latest --secret owner-key --project kampungcart-prod`
+(every other shop gets its own key when it goes live).
+
+**Turn on email** (Gmail SMTP with an app password):
+```bash
+printf '%s' 'you@gmail.com'    | gcloud secrets versions add smtp-user     --data-file=- --project kampungcart-prod
+read -s "P?App password: " && printf '%s' "$P" | gcloud secrets versions add smtp-password --data-file=- --project kampungcart-prod && unset P
+```
+Then set `smtp_enabled = true` (tfvars locally, or `TF_VAR_smtp_enabled` in `infra.yml`) and apply.
 
 **Roll back by hand:**
 ```bash
@@ -98,7 +106,7 @@ Prefer PRs over local applies, so state changes go through review.
 2. `cd infra/terraform`. Set `project_id` and the state bucket in `versions.tf`, then apply
    everything **except** `google_cloud_run_v2_service.app`,
    `google_cloud_run_v2_service_iam_member.public` and the uptime/alert resources (use `-target`).
-3. Add the secret values (`gemini-api-key`, `owner-key`) with `gcloud secrets versions add`.
+3. Add the secret value for `owner-key` (and later `smtp-user` / `smtp-password`) with `gcloud secrets versions add`.
 4. Push a first image: `docker buildx build --platform linux/amd64 -t REGION-docker.pkg.dev/PROJECT/kampungcart/app:initial --push .`
 5. `terraform apply` (everything).
 6. Set the GitHub variables below and create the `production` environment.
@@ -123,15 +131,16 @@ deployment branches to `main`. The `gh-terraform` account only trusts jobs in th
 
 ## Known limits
 
-> **Data is not persistent yet.** Until `FirestoreStore` / `GcsImageStore` are implemented the
-> service runs with `store_backend = "local"`: shops, orders, audit log and photos live on the
-> instance's in-memory disk and are **lost on every deploy or restart**. Firestore and the uploads
-> bucket already exist. When the app supports them, set `store_backend = "firestore"` and raise
-> `max_instances`.
-
-- One instance (`min = max = 1`) while data is local. The order rate limiter is in memory, too.
-- Rate-limit key = rightmost `X-Forwarded-For` entry (added by Cloud Run). If a load balancer is
-  ever put in front, `backend/external.py:client_key` must change.
-- Single shared `OWNER_KEY` for all shops.
-- Gemini via API key (in Secret Manager). Restrict the key to the Generative Language API.
-- [`scripts/deploy.py`](../scripts/deploy.py) is a break-glass manual deploy only. Normal deploys go through CI.
+- **Data** lives in Firestore (`(default)`, asia-southeast1, point-in-time recovery 7 days,
+  delete protection) and menu photos in `kampungcart-prod-uploads`, so deploys and restarts
+  keep everything. Rate limits, sessions and idempotency keys are in Firestore too, so up to
+  `max_instances` (10) instances can run side by side.
+- **Gemini** runs through Vertex AI as `kampungcart-run` (no API key). `GEMINI_LOCATION=global`
+  means Gemini requests may be served outside Singapore.
+- **Rate-limit key** = rightmost `X-Forwarded-For` entry (added by Cloud Run). If a load balancer
+  is ever put in front, `backend/external.py:client_key` must change.
+- **`min_instances = 1`** keeps the 5-minute background jobs (order expiry, 90-day erase) running
+  and avoids cold starts. It costs an always-on instance; see the budget alert.
+- [`scripts/deploy.py`](../scripts/deploy.py) is a break-glass manual deploy only. Normal deploys
+  go through CI. [`DEPLOY.md`](DEPLOY.md) is the manual Cloud Shell path; this Terraform setup
+  replaces it for `kampungcart-prod`.
