@@ -61,7 +61,9 @@ Local run: `docker build -t kampungcart:local . && docker run --rm -p 8080:8080 
 ## Day-to-day
 
 **Ship app code:** merge to `main`. `deploy.yml` runs CI, deploys, smoke-tests (`/api/health`,
-UCP profile URL, owner routes return 401, dashboard 200) and rolls back automatically on failure.
+UCP profile URL, owner routes return 401, MCP lists its tools, the "Order with AI" chat route
+answers an unknown chat with 410 (no Gemini call), dashboard 200) and rolls back automatically on
+failure.
 
 **Change infrastructure:** edit `infra/terraform/*.tf` in a PR, read the plan comment, merge,
 approve the `production` environment run.
@@ -147,6 +149,10 @@ deployment branches to `main`. The `gh-terraform` account only trusts jobs in th
   means Gemini requests may be served outside Singapore.
 - **Rate-limit key** = rightmost `X-Forwarded-For` entry (added by Cloud Run). If a load balancer
   is ever put in front, `backend/external.py:client_key` must change.
+- **"Order with AI" chat** (Google ADK) keeps each conversation in the instance's memory, so the
+  service runs with **session affinity** (`session_affinity` in `run.tf`, `--session-affinity`
+  in `deploy.yml`). If an instance goes away mid-chat, the customer starts a new chat; orders are
+  in Firestore and never lost. It uses Vertex AI like the menu reader: no extra secret or role.
 - **`min_instances = 1`** keeps the 5-minute background jobs (order expiry, 90-day erase) running
   and avoids cold starts. It costs an always-on instance; see the budget alert.
 - [`scripts/deploy.py`](../scripts/deploy.py) is a break-glass manual deploy only. Normal deploys

@@ -42,7 +42,7 @@ jobs:
         run: uv run --frozen pytest -q -rs
 
   dashboard:
-    name: Dashboard typecheck, lint, build
+    name: Dashboard typecheck, lint, tests, build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,6 +57,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm test # vitest, same as scripts/test.ps1 locally
       - run: npm run build
 
   docker:

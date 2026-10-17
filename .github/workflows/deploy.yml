@@ -83,9 +83,11 @@ jobs:
 
       - name: Deploy new revision
         # Only the image changes. Env vars, secrets, scaling and probes are owned by Terraform.
+        # --session-affinity matches run.tf: the ADK chat keeps conversations in instance memory.
         run: |
           gcloud run deploy "$SERVICE" --region "$REGION" --quiet \
             --image "${IMAGE}@${{ steps.build.outputs.digest }}" \
+            --session-affinity \
             --revision-suffix "${GITHUB_SHA::7}-${GITHUB_RUN_ATTEMPT}"
           gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet
 
@@ -110,6 +112,12 @@ jobs:
             -H 'Accept: application/json, text/event-stream' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools | length')
           [ "$tools" -ge 6 ] || { echo "MCP lists $tools tools, expected 6"; exit 1; }
+          # "Order with AI" chat: an unknown chat id must get 410. That proves the route is up and
+          # Gemini is configured (503 if not), without making any Gemini call.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "$url/api/public/shops/mak-kuih/chat" -H 'Content-Type: application/json' \
+            -d '{"chat_id":"smoke-test","message":"hi"}')
+          [ "$code" = 410 ] || { echo "chat endpoint not ready (got $code; 503 = Gemini not configured)"; exit 1; }
           code=$(curl -s -o /dev/null -w '%{http_code}' "$url/")
           [ "$code" = 200 ] || { echo "dashboard not served (got $code)"; exit 1; }
           echo "Smoke test passed"

@@ -15,6 +15,9 @@ resource "google_cloud_run_v2_service" "app" {
     service_account                  = google_service_account.runtime.email
     timeout                          = "120s"
     max_instance_request_concurrency = 40
+    # The "Order with AI" chat (ADK) keeps each conversation in the instance's memory, so a
+    # browser should keep reaching the same instance. deploy.yml sets it on every revision too.
+    session_affinity = true
 
     scaling {
       min_instance_count = var.min_instances
