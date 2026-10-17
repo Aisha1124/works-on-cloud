@@ -29,11 +29,12 @@ describe('customer shop page', () => {
     expect((await screen.findByTestId('landed')).dataset.path).toBe('/')
   })
 
-  it('gives one example sentence to type to an AI assistant, with a real item', async () => {
+  it('says any AI can read the shop from its link and only MCP apps can order, with one example sentence', async () => {
     stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
     renderAt('/s/mak-kuih', routes)
-    const box = await screen.findByRole('region', { name: /Order with your AI assistant/ })
-    expect(box.textContent).toContain('https://kc.example/mcp')
+    const box = await screen.findByRole('region', { name: 'Ask your AI assistant about this shop' })
+    expect(box.textContent).toContain("Share this page's link with ChatGPT, Gemini or Claude to ask about the menu, prices and opening hours.")
+    expect(box.textContent).toContain('AI apps that support MCP can also place pickup orders: add https://kc.example/mcp as a connector.')
     expect(box.textContent).toContain('Order 2 boxes of Kuih Lapis from mak-kuih for Saturday 10am pickup.')
   })
 
@@ -47,7 +48,7 @@ describe('customer shop page', () => {
   it('shows no example label on a real shop', async () => {
     stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
     renderAt('/s/mak-kuih', routes)
-    await screen.findByRole('region', { name: /Order with your AI assistant/ })
+    await screen.findByRole('region', { name: /Ask your AI assistant/ })
     expect(screen.queryByText('Example shop')).toBeNull()
   })
 

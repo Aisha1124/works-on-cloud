@@ -32,10 +32,10 @@ describe('home page', () => {
   it('has one door for shop owners and one for customers, and no small text link', () => {
     renderAt('/', routes)
     const owner = screen.getByRole('button', { name: /I run a shop.*Upload my menu/i })
-    const customer = screen.getByRole('link', { name: /I'm a customer.*See a live shop/i })
+    const customer = screen.getByRole('link', { name: /See what customers see.*Try Mak's Kuih/i })
     expect(owner).toBeTruthy()
     expect(customer.getAttribute('href')).toBe('/s/mak-kuih')
-    expect(screen.queryByText(/See a live shop:/)).toBeNull()
+    expect(screen.queryByText(/See a live shop/)).toBeNull()
   })
 
   it('"Upload my menu" scrolls to and focuses the upload box', () => {
@@ -47,9 +47,9 @@ describe('home page', () => {
     expect(document.activeElement).toBe(heading)
   })
 
-  it('"See a live shop" opens the sample shop', async () => {
+  it('"Try Mak\'s Kuih" opens the sample shop', async () => {
     renderAt('/', routes)
-    fireEvent.click(screen.getByRole('link', { name: /See a live shop/i }))
+    fireEvent.click(screen.getByRole('link', { name: /Try Mak's Kuih/i }))
     expect((await screen.findByTestId('landed')).dataset.path).toBe('/s/mak-kuih')
   })
 
@@ -60,7 +60,7 @@ describe('home page', () => {
     expect(steps).toHaveLength(4)
     expect(steps[0].textContent).toMatch(/menu photo.*Gemini/i)
     expect(steps[1].textContent).toMatch(/Go live.*shop link, QR code and owner key/i)
-    expect(steps[2].textContent).toMatch(/AI assistant \(Claude, Gemini\)/)
+    expect(steps[2].textContent).toMatch(/Any AI can read the menu.*AI apps connected through MCP can also order/)
     expect(steps[3].textContent).toMatch(/confirm automatically.*owner's OK/i)
     expect(screen.queryByText('How it works')).toBeNull()
   })

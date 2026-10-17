@@ -180,12 +180,13 @@ export function PublicShop() {
           )}
 
           <section className="flex flex-col gap-2 border-2 border-ink bg-ink p-4 text-receipt shadow-hard sm:p-5" aria-labelledby="ai-order">
-            <h2 id="ai-order" className="flex items-center gap-2 text-xl text-receipt">
-              <Bot aria-hidden className="size-5" /> Order with your AI assistant
+            <h2 id="ai-order" className="flex items-start gap-2 text-xl text-receipt">
+              <Bot aria-hidden className="mt-1 size-5 flex-none" /> Ask your AI assistant about this shop
             </h2>
+            <p>Share this page's link with ChatGPT, Gemini or Claude to ask about the menu, prices and opening hours.</p>
             <p className="text-sm">
-              Add <code className="font-mono break-all text-turmeric">{page.data.links.mcp}</code> as a connector in Claude (or any MCP app), then ask
-              it to order from “{shop.slug}”.
+              AI apps that support MCP can also place pickup orders: add{' '}
+              <code className="font-mono break-all text-turmeric">{page.data.links.mcp}</code> as a connector.
             </p>
             <p className="text-sm">
               <span className="text-turmeric">Try:</span> <q>{exampleAsk(shop.slug, page.data.products)}</q>

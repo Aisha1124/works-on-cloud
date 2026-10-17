@@ -10,6 +10,8 @@ Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
 **Live:** `https://<LIVE-URL>` (placeholder: the deployed Cloud Run URL goes here)
 
+Any AI can read the shop's menu from its link; AI apps connected through MCP can also place orders.
+
 ### Try it in 2 minutes
 1. **Owner: photo → live shop.** Open the live URL, tap **I run a shop · Upload my menu** and drop a photo of a
    menu or price list (sample photos are in `tests/eval_data/menus/`). Gemini reads it into a
@@ -182,6 +184,7 @@ Not done yet: changing the owner email or rotating the backup key from the dashb
 - Also set there: approval timeout, cancel cutoff and the auto-approve limit.
 
 ## Connect an AI agent
+Any AI can read the shop's menu from its link; AI apps connected through MCP can also place orders.
 Every published shop can be used by any AI agent that speaks MCP (Claude, Gemini, ChatGPT with
 MCP support) through one MCP server, using the streamable HTTP transport:
 

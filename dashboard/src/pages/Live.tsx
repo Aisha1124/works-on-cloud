@@ -61,8 +61,8 @@ export function Live() {
             <Stamp kind="approved" label="Live" size="lg" animate={!!ownerKey} />
           </div>
           <p className="mt-2 text-ink-soft">
-            Customers can order from your shop page, and AI shopping assistants can find {shop.name}, read your menu and place pickup
-            orders. You approve anything unusual.
+            Customers can order from your shop page. Any AI can read your menu from its link; AI apps connected through MCP can also
+            place pickup orders. You approve anything unusual.
           </p>
           <ReceiptDivider />
           <div className="flex flex-col gap-6">
