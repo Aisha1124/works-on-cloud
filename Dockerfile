@@ -3,7 +3,7 @@
 # No secrets are baked in. GEMINI_API_KEY and OWNER_KEY come from Secret Manager at runtime.
 
 # --- 1. Dashboard ------------------------------------------------------------------------
-FROM node:24-slim AS dashboard
+FROM node:25-slim AS dashboard
 WORKDIR /dashboard
 COPY dashboard/package.json dashboard/package-lock.json ./
 RUN npm ci
