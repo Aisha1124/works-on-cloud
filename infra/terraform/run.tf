@@ -45,6 +45,14 @@ resource "google_cloud_run_v2_service" "app" {
         value = var.gemini_model
       }
       env {
+        name  = "GOOGLE_GENAI_USE_VERTEXAI"
+        value = "true"
+      }
+      env {
+        name  = "GEMINI_LOCATION"
+        value = var.gemini_location
+      }
+      env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
       }
@@ -68,9 +76,29 @@ resource "google_cloud_run_v2_service" "app" {
         name  = "FIRESTORE_DATABASE"
         value = google_firestore_database.main.name
       }
+      env {
+        name  = "ADMIN_EMAIL"
+        value = var.admin_email != "" ? var.admin_email : var.alert_email
+      }
+      env {
+        name  = "SAMPLE_OWNER_EMAIL"
+        value = var.sample_owner_email
+      }
+      env {
+        name  = "EMAIL_PROVIDER"
+        value = "smtp"
+      }
+      env {
+        name  = "SMTP_HOST"
+        value = "smtp.gmail.com"
+      }
+      env {
+        name  = "SMTP_PORT"
+        value = "587"
+      }
 
       dynamic "env" {
-        for_each = local.secrets
+        for_each = local.attached_secrets
         content {
           name = env.key
           value_source {

@@ -42,6 +42,7 @@ FIRST_ORDER = 10
 BURST = 30
 SUSPICIOUS_NOTE = 35
 PRICE_MISMATCH = 50
+NOT_ON_MENU = 20
 
 RUSH_HOURS = 12
 BURST_WINDOW = timedelta(minutes=10)
@@ -87,6 +88,13 @@ def pack_size(label: str) -> int:
 def largest_pack(product: Product) -> int:
     labels = [v.label for v in product.variants] or [product.unit]
     return max(pack_size(label) for label in labels)
+
+
+def unusual_qty(product: Product, qty: int) -> int | None:
+    """The product's largest pack when `qty` is more than 3x it (unusual for a small shop),
+    else None. Used by the risk score and by the owner-review check."""
+    biggest = largest_pack(product)
+    return biggest if qty > 3 * biggest else None
 
 
 # --- Opening hours ------------------------------------------------------------------
@@ -203,7 +211,8 @@ _NOTE_PATTERNS: list[tuple[str, re.Pattern]] = [
         r"|\byou are (?:now )?(?:an?|the) |\bact as\b|^\s*(?:system|assistant)\s*:"
         r"|(?:auto[- ]?)?approve (?:this|the|my) order|mark (?:this|the|it|order) (?:as )?(?:approved|paid)"
         r"|(?:set|change) (?:the )?(?:order )?status|override|bypass"
-        r"|do not (?:flag|check|hold|review)|skip (?:the )?(?:risk|check|review|approval)",
+        r"|do not (?:flag|check|hold|review)|skip (?:the )?(?:risk|check|review|approval)"
+        r"|(?:set|change|make|update|reduce) (?:all |every |each |the |my )*(?:prices?|totals?|costs?)",
         re.IGNORECASE | re.MULTILINE)),
     ("a payment change request", re.compile(
         r"pay ?now (?:to|at|number|\+?\d)|pay(?:ment)? (?:to|into|via) (?:my|this|another|a different|the following)"
@@ -216,6 +225,12 @@ _NOTE_PATTERNS: list[tuple[str, re.Pattern]] = [
 
 def note_flags(note: str) -> list[str]:
     return [label for label, pattern in _NOTE_PATTERNS if pattern.search(note or "")]
+
+
+def looks_like_instructions(text: str) -> bool:
+    """Text that tries to instruct an AI or the system (e.g. "ignore previous instructions").
+    Used to flag menu text too; the text is always kept as data, never followed."""
+    return "instructions aimed at the system" in note_flags(text)
 
 
 # --- Rules --------------------------------------------------------------------------
@@ -235,6 +250,7 @@ class OrderFacts:
     price_mismatch: bool
     previous_orders: list[Order]  # this shop's earlier orders
     now: datetime
+    unpriced: int = 0  # lines not on the menu (no price yet)
 
 
 def score_rules(f: OrderFacts) -> Risk:
@@ -246,15 +262,16 @@ def score_rules(f: OrderFacts) -> Risk:
         hits.append((TOTAL_OVER_150, f"Order total S${f.total:.2f} is over S$150"))
 
     for product, qty in f.lines:
-        biggest = largest_pack(product)
-        if qty > 3 * biggest:
+        biggest = unusual_qty(product, qty)
+        if biggest is not None:
             hits.append((BIG_QTY, f"Unusual quantity: {qty} x {product.name} "
                                   f"(more than 3x the largest pack of {biggest})"))
             break
 
-    lead = f.pickup_at - f.now
-    if lead < timedelta(hours=RUSH_HOURS):
-        hits.append((RUSHED_PICKUP, f"Rushed pickup: less than {RUSH_HOURS} hours away"))
+    # Rushed = within RUSH_HOURS after the earliest pickup the shop allows (its notice).
+    rush = f.shop.min_notice_hours + RUSH_HOURS
+    if f.pickup_at - f.now < timedelta(hours=rush):
+        hits.append((RUSHED_PICKUP, f"Rushed pickup: less than {rush} hours away"))
 
     hours = parse_hours(f.shop.hours) if f.shop.hours.strip() else None
     if hours is not None and not is_open(hours, f.pickup_at):
@@ -287,6 +304,10 @@ def score_rules(f: OrderFacts) -> Risk:
     if f.price_mismatch:
         hits.append((PRICE_MISMATCH, "Buyer sent prices that differ from the menu "
                                      "(menu prices were used)"))
+
+    if f.unpriced:
+        hits.append((NOT_ON_MENU, f"{f.unpriced} item(s) not on the menu; the owner must "
+                                  "price them"))
 
     score = min(100, sum(points for points, _ in hits))
     return Risk(score=score, level=level_for(score), reasons=[r for _, r in hits])

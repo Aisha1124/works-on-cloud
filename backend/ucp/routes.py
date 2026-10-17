@@ -18,7 +18,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agents.commerce import service as commerce
+from backend import notify
 from backend.api.config import Settings
+from backend.external import mask_phone
 from backend.external import (
     GENERIC_ERROR, MAX_ID_LEN, MAX_QUERY_LEN, RATE_LIMIT_MESSAGE, ShopNotFound,
     audit_external_call, clean_agent_name, client_key, published_shop, published_shops,
@@ -36,7 +38,6 @@ from backend.ucp.profile import (
 log = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 64 * 1024
-HELD_MESSAGE = "Held for owner approval"
 COMPLETED = {OrderStatus.auto_approved, OrderStatus.approved, OrderStatus.ready,
              OrderStatus.done}
 
@@ -394,7 +395,13 @@ def ucp_router() -> APIRouter:
                 status = "completed"
             elif order.status == OrderStatus.pending_approval:
                 status = "complete_in_progress"
-                messages.append(message("info", "held_for_approval", HELD_MESSAGE))
+                messages.append(message("info", "held_for_approval",
+                                        commerce.buyer_message(shop, order)))
+            elif order.status == OrderStatus.cancelled:
+                status = "canceled"
+                messages.append(message("error", "canceled_by_buyer",
+                                        "The buyer cancelled this order from its status page.",
+                                        None, "unrecoverable"))
             else:
                 status = "canceled"
                 why = f": {order.rejection_reason}" if order.rejection_reason else "."
@@ -427,7 +434,9 @@ def ucp_router() -> APIRouter:
             "line_items": line_items,
             "totals": convert.totals(total) if total is not None else [],
             "links": [],
-            "buyer": session.buyer.model_dump(),
+            # Anyone holding the checkout id can read it, so the phone is masked (last 4).
+            "buyer": {**session.buyer.model_dump(),
+                      "phone_number": mask_phone(session.buyer.phone_number)},
             "kampungcart": {
                 "shop": {"slug": shop.slug, "name": shop.name, "address": shop.address,
                          "hours": shop.hours, "phone": shop.phone} if shop else None,
@@ -435,11 +444,12 @@ def ucp_router() -> APIRouter:
                 "payment": "Pay at pickup",
                 "order_id": order.id if order else None,
                 "order_status": order.status.value if order else None,
+                # The buyer's private status page (check and cancel the order).
+                "status_url": notify.status_url(settings, order) if order else None,
             },
         }
         if order is not None and status == "completed":
-            out["order"] = {"id": order.id, "permalink_url": (
-                f"{base_url(settings)}{API_PREFIX}/checkout-sessions/{session.id}")}
+            out["order"] = {"id": order.id, "permalink_url": notify.status_url(settings, order)}
         messages += extra or []
         if messages:
             out["messages"] = messages
@@ -481,6 +491,9 @@ def ucp_router() -> APIRouter:
     async def get_checkout(request: Request, checkout_id: str):
         async def body(h):
             session = load(request, checkout_id, h)
+            if session.order_id:  # a held order may have expired meanwhile
+                commerce.expire_due_for_order(request.app.state.store,
+                                              request.app.state.settings, session.order_id)
             return session.shop_id, render(request, session)
 
         return await respond(request, "checkout.get", header_agent_name(request), body)
@@ -539,7 +552,7 @@ def ucp_router() -> APIRouter:
                     store, session.shop_id, _commerce_items(store, session.lines),
                     f"{buyer.first_name} {buyer.last_name}".strip(), buyer.phone_number,
                     session.pickup_at, session.note, Channel.ucp, session.agent_name,
-                    settings=settings)
+                    customer_email=buyer.email, settings=settings)
             except commerce.OrderValidationError as exc:
                 return session.shop_id, render(request, session, [
                     message("error", "invalid", e) for e in exc.errors])

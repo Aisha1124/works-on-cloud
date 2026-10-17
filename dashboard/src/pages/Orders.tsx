@@ -24,7 +24,7 @@ import {
 } from '../ui'
 
 const POLL_MS = 3000
-const channelLabel = { mcp: 'MCP', ucp: 'UCP', dashboard: 'Dashboard' } as const
+const channelLabel = { mcp: 'MCP', ucp: 'UCP', dashboard: 'Dashboard', web: 'Shop page' } as const
 const stampFor: Record<OrderStatus, { kind: StampKind; label: string }> = {
   auto_approved: { kind: 'approved', label: 'Auto-approved' },
   approved: { kind: 'approved', label: 'Approved' },
@@ -32,7 +32,9 @@ const stampFor: Record<OrderStatus, { kind: StampKind; label: string }> = {
   rejected: { kind: 'rejected', label: 'Rejected' },
   ready: { kind: 'approved', label: 'Ready' },
   done: { kind: 'approved', label: 'Done' },
+  cancelled: { kind: 'rejected', label: 'Cancelled' },
 }
+const EXPIRED_STAMP = { kind: 'rejected' as StampKind, label: 'Expired' }
 
 function OrderCard({
   shopId,
@@ -52,7 +54,7 @@ function OrderCard({
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const held = order.status === 'pending_approval'
-  const stamp = stampFor[order.status]
+  const stamp = order.expired ? EXPIRED_STAMP : stampFor[order.status]
 
   async function decide(action: 'approve' | 'reject', e?: FormEvent) {
     e?.preventDefault()
@@ -104,6 +106,12 @@ function OrderCard({
               {order.customer_phone}
             </a>
           </dd>
+          {order.customer_email && (
+            <>
+              <dt className="text-muted">Email</dt>
+              <dd className="min-w-0 font-mono break-all">{order.customer_email}</dd>
+            </>
+          )}
           <dt className="text-muted">Pickup</dt>
           <dd className="font-mono font-semibold">{formatPickup(order.pickup_at)}</dd>
         </dl>
@@ -118,13 +126,36 @@ function OrderCard({
                     <span className="font-mono">{it.qty} ×</span> {it.name}
                   </>
                 }
-                hint={[it.variant, ...Object.entries(it.options).map(([k, v]) => `${k}: ${v}`)].filter(Boolean).join(' · ') || undefined}
+                hint={[it.variant, ...Object.entries(it.options).map(([k, v]) => `${k}: ${v}`), it.request && `Request: “${it.request}”`].filter(Boolean).join(' · ') || undefined}
                 value={<PriceTag value={it.line_total} />}
               />
             </li>
           ))}
+          {order.unpriced_requests?.map((u, i) => (
+            <li key={`unpriced-${i}`}>
+              <ReceiptRow
+                label={
+                  <>
+                    <span className="font-mono">{u.qty} ×</span> {u.name}
+                  </>
+                }
+                hint={['Not on the menu', u.request && `Request: “${u.request}”`].filter(Boolean).join(' · ')}
+                value={<span className="font-semibold text-chili">PRICE TBC</span>}
+              />
+            </li>
+          ))}
         </ul>
-        <ReceiptTotal value={formatSGD(order.total)} />
+        <ReceiptTotal label={order.unpriced_requests?.length ? 'TOTAL (menu items)' : undefined} value={formatSGD(order.total)} />
+        {order.review_reasons && order.review_reasons.length > 0 && (
+          <div className="mt-3 border-2 border-ink bg-turmeric-tint p-3 text-sm">
+            <p className="font-mono text-xs tracking-widest uppercase">Needs your check</p>
+            <ul className="list-[square] pl-5">
+              {order.review_reasons.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {order.note && (
           <div className="mt-3 border-l-4 border-ink pl-3 text-sm">
@@ -148,9 +179,10 @@ function OrderCard({
 
         {order.status === 'rejected' && order.rejection_reason && (
           <p className="mt-3 text-sm">
-            <span className="font-semibold">Reason given:</span> {order.rejection_reason}
+            <span className="font-semibold">{order.expired ? 'Closed automatically:' : 'Reason given:'}</span> {order.rejection_reason}
           </p>
         )}
+        {order.status === 'cancelled' && <p className="mt-3 text-sm font-semibold">The customer cancelled this order. No need to prepare it.</p>}
 
         {justDecided && !held && (
           <div className="mt-5 flex justify-center pb-2" role="status">

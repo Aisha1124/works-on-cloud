@@ -10,7 +10,7 @@ import pytest
 from agents.approval import service as approval
 from agents.commerce import service as commerce
 from agents.commerce.service import OrderValidationError
-from backend.models import Actor, OrderStatus, RiskLevel
+from backend.models import Actor, OrderStatus, Risk, RiskLevel, Shop
 from tests.conftest import GOOD_PHONE, NOW, SATURDAY_10AM
 from tests.gemini_fake import fake_client
 
@@ -83,11 +83,13 @@ def test_total_above_limit_is_held_even_when_low_risk(store, demo, gemini_settin
 
 
 def test_fake_phone_is_high_and_held(store, demo, gemini_settings):
-    # The suspicious demo order: fake number and a rushed pickup.
+    # The suspicious demo order: fake number and a rushed pickup (28 hours away: just past the
+    # shop's 24 hours' notice, so inside the 24 + 12 hour rush window).
     order = place(store, demo, gemini_settings, customer_phone="12345",
-                  pickup_at=NOW + timedelta(hours=3))
+                  pickup_at=NOW + timedelta(hours=28))
     assert order.risk.level == RiskLevel.high
     assert order.risk.score == 65  # 40 phone + 10 first order + 15 rushed
+    assert "Rushed pickup: less than 36 hours away" in order.risk.reasons
     assert order.status == OrderStatus.pending_approval
     assert "Phone number is not a valid Singapore number" in order.risk.reasons
 
@@ -228,7 +230,9 @@ def test_naive_pickup_is_singapore_time(store, demo, gemini_settings):
 @pytest.mark.parametrize("kw, message", [
     ({"customer_name": " "}, "customer_name is required."),
     ({"customer_phone": ""}, "customer_phone is required."),
-    ({"pickup_at": NOW - timedelta(minutes=1)}, "pickup_at must be in the future"),
+    ({"pickup_at": NOW - timedelta(minutes=1)}, "pickup time must be in the future"),
+    ({"pickup_at": NOW + timedelta(hours=5)}, "needs 24 hours' notice"),
+    ({"pickup_at": "2026-10-19T10:00"}, "closed at Mon 19 Oct 10:00"),
     ({"pickup_at": "Saturday"}, "pickup_at must be a date and time"),
     ({"note": "x" * 501}, "note is too long"),
 ])
@@ -299,3 +303,25 @@ def test_orders_from_other_shops_are_not_found(store, demo, gemini_settings):
         commerce.get_order_status(store, "other-shop", order.id)
     with pytest.raises(approval.OrderNotFound):
         approval.reject(store, demo.shop.id, "missing")
+
+
+def test_review_reasons_hold_a_low_risk_order(store, demo, gemini_settings):
+    order = place(store, demo, gemini_settings,
+                  [{"name": "Kuih Lapis", "variant": "20 pcs", "qty": 1},
+                   {"name": "Durian Puff", "qty": 2}])
+    assert order.total == Decimal("16.00")
+    assert order.status == OrderStatus.pending_approval
+    assert [u.name for u in order.unpriced_requests] == ["Durian Puff"]
+    assert order.review_reasons == ["2 x 'Durian Puff' is not on the menu; the owner will price it"]
+    held = store.list_audit_events(demo.shop.id)[0]
+    assert held.action == "order_held" and "needs owner review" in held.summary
+    # The owner can still approve it as usual.
+    assert approval.approve(store, demo.shop.id, order.id).status == OrderStatus.approved
+
+
+def test_decide_holds_on_review_reasons():
+    shop = Shop(slug="s", name="S")
+    low = Risk(score=0, level=RiskLevel.low)
+    assert approval.decide(shop, low, Decimal("10"))[0] == OrderStatus.auto_approved
+    status, why = approval.decide(shop, low, Decimal("10"), ["custom request"])
+    assert status == OrderStatus.pending_approval and why == "needs owner review: custom request"

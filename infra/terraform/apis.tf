@@ -14,7 +14,7 @@ resource "google_project_service" "apis" {
     "cloudbilling.googleapis.com", # IAM on the billing account (budget permissions)
     "cloudresourcemanager.googleapis.com",
     "serviceusage.googleapis.com",
-    "generativelanguage.googleapis.com", # Gemini API (key-based)
+    "aiplatform.googleapis.com", # Gemini through Vertex AI (service account, no API key)
   ])
   service            = each.value
   disable_on_destroy = false

@@ -40,10 +40,16 @@ variable "gemini_model" {
   default = "gemini-3.8-flash"
 }
 
-variable "store_backend" {
-  description = "local until FirestoreStore/GcsImageStore are implemented, then firestore."
+variable "gemini_location" {
+  description = "Vertex AI location. The Gemini Interactions API is served from global only."
   type        = string
-  default     = "local"
+  default     = "global"
+}
+
+variable "store_backend" {
+  description = "firestore in production (data survives deploys, shared by all instances)."
+  type        = string
+  default     = "firestore"
   validation {
     condition     = contains(["local", "firestore"], var.store_backend)
     error_message = "store_backend must be local or firestore."
@@ -51,18 +57,37 @@ variable "store_backend" {
 }
 
 variable "max_instances" {
-  description = "Must stay 1 while store_backend = local (data lives on the instance)."
+  description = "Cost cap. Only 1 is safe with store_backend = local."
   type        = number
-  default     = 1
+  default     = 10
 }
 
 variable "min_instances" {
-  type    = number
-  default = 1
+  description = "1 keeps an instance warm: no cold start, and the 5-minute background jobs keep running."
+  type        = number
+  default     = 1
 }
 
 variable "custom_base_url" {
   description = "Set if a custom domain is mapped. Default: the deterministic run.app URL."
   type        = string
   default     = ""
+}
+
+variable "admin_email" {
+  description = "Gets 'report this shop' messages; shown on /privacy. Default: alert_email."
+  type        = string
+  default     = ""
+}
+
+variable "sample_owner_email" {
+  description = "Optional owner email of the sample shop mak-kuih (gets its order emails)."
+  type        = string
+  default     = ""
+}
+
+variable "smtp_enabled" {
+  description = "Attach the smtp-user / smtp-password secrets. Turn on only after both have a value."
+  type        = bool
+  default     = false
 }

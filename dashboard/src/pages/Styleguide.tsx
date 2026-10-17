@@ -55,7 +55,7 @@ const sampleAudit: Array<{ at: string; actor: Actor; action: string; summary: st
   { at: '2026-10-17T02:14:09Z', actor: 'owner', action: 'order.approved', summary: 'Owner approved order 7f3a9c after a call.' },
   { at: '2026-10-17T02:11:52Z', actor: 'risk_agent', action: 'risk.scored', summary: 'Scored 82 (high): new phone number, pickup in 40 minutes, note asks to skip checks.' },
   { at: '2026-10-17T02:11:50Z', actor: 'external_agent', action: 'order.placed', summary: 'Order for 300 pcs kuih lapis received through UCP.' },
-  { at: '2026-10-17T01:40:03Z', actor: 'shopper_agent', action: 'order.placed', summary: 'Demo shopper ordered 50 pcs kuih lapis for Saturday pickup.' },
+  { at: '2026-10-17T01:40:03Z', actor: 'shopper_agent', action: 'order.placed', summary: 'Shopper agent ordered 50 pcs kuih lapis for Saturday pickup.' },
   { at: '2026-10-17T01:02:31Z', actor: 'catalog_agent', action: 'catalog.extracted', summary: 'Read 14 items from the price-list photo; 2 marked for review.' },
   { at: '2026-10-17T01:00:00Z', actor: 'system', action: 'shop.created', summary: 'Shop created.' },
 ]

@@ -3,7 +3,7 @@
 Money is always Decimal. In JSON it is a string (e.g. "12.50"), never a float.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -24,6 +24,7 @@ class Channel(StrEnum):
     mcp = "mcp"
     ucp = "ucp"
     dashboard = "dashboard"
+    web = "web"  # a customer ordering on the public shop page /s/{slug}
 
 
 class RiskLevel(StrEnum):
@@ -39,6 +40,7 @@ class OrderStatus(StrEnum):
     rejected = "rejected"
     ready = "ready"
     done = "done"
+    cancelled = "cancelled"  # by the customer, from their order status page
 
 
 class Actor(StrEnum):
@@ -48,6 +50,7 @@ class Actor(StrEnum):
     risk_agent = "risk_agent"
     shopper_agent = "shopper_agent"
     external_agent = "external_agent"
+    customer = "customer"  # a person ordering on the public shop page
 
 
 class Shop(BaseModel):
@@ -62,6 +65,22 @@ class Shop(BaseModel):
     currency: str = "SGD"
     published: bool = False
     auto_approve_limit: Decimal = Decimal("150")
+    # Only the seeded sample shop (mak-kuih): its pages say it is an example, not a real shop.
+    example: bool = False
+    # Set when the shop goes live. Owner-only: never part of a public or agent response.
+    owner_email: str = ""
+    email_verified: bool = False
+    # A held order the owner hasn't decided within this many hours is rejected automatically.
+    approval_timeout_hours: int = Field(default=24, ge=1, le=168)
+    # Customers can cancel from their status page until this many hours before pickup.
+    cancel_cutoff_hours: int = Field(default=12, ge=0, le=168)
+    # Pickup must be at least this many hours after ordering (Singapore time).
+    min_notice_hours: int = Field(default=24, ge=0, le=336)
+    # At most this many orders per pickup day (None = no limit). Rejected and cancelled
+    # orders don't count.
+    daily_capacity: int | None = Field(default=None, ge=1, le=1000)
+    # No new orders until this date (Singapore). The pause ends by itself on that day.
+    paused_until: date | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -88,6 +107,10 @@ class Product(BaseModel):
     available: bool = True
     description: str = ""
     confidence: float = Field(default=1.0, ge=0, le=1)
+    # Owner-only. Why the menu reader wants the owner to check this item (see
+    # agents/catalog/checks.py); cleared once the owner saves the item.
+    check_reasons: list[str] = Field(default_factory=list)
+    owner_checked: bool = False  # the owner saved this item themselves
 
 
 class OrderItem(BaseModel):
@@ -98,6 +121,16 @@ class OrderItem(BaseModel):
     qty: int = Field(ge=1)
     unit_price: Decimal
     line_total: Decimal
+    request: str = ""  # buyer's custom request for this line; untrusted text, owner confirms
+
+
+class UnpricedRequest(BaseModel):
+    """A line the buyer asked for that is not on the menu. It has no price until the owner
+    sets one, so it is never part of the order total."""
+
+    name: str
+    qty: int = Field(ge=1)
+    request: str = ""
 
 
 class Risk(BaseModel):
@@ -114,6 +147,7 @@ class Order(BaseModel):
     total: Decimal
     customer_name: str
     customer_phone: str
+    customer_email: str = ""  # optional: status updates by email
     pickup_at: datetime
     note: str = ""
     channel: Channel
@@ -121,6 +155,15 @@ class Order(BaseModel):
     risk: Risk | None = None
     status: OrderStatus
     rejection_reason: str = ""
+    expired: bool = False  # rejected because the owner didn't decide in time
+    # Secret part of the customer's status link /o/{id}?t={token}. Never sent to agents
+    # except in the status link itself.
+    status_token: str = ""
+    # Name, phone, email and note were erased (privacy: 90 days after pickup).
+    personal_data_erased: bool = False
+    unpriced_requests: list[UnpricedRequest] = Field(default_factory=list)
+    review_reasons: list[str] = Field(default_factory=list)  # why the owner must look at it
+    review_codes: list[str] = Field(default_factory=list)  # commerce.HOLD_SENTENCES keys
     created_at: datetime = Field(default_factory=utc_now)
 
 

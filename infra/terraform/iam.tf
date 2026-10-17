@@ -14,7 +14,8 @@ resource "google_service_account" "runtime" {
 
 resource "google_project_iam_member" "runtime" {
   for_each = toset([
-    "roles/datastore.user", # Firestore read/write
+    "roles/datastore.user",  # Firestore read/write
+    "roles/aiplatform.user", # Gemini via Vertex AI
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
     "roles/cloudtrace.agent",

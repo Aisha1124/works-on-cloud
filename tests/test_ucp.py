@@ -185,7 +185,8 @@ def test_held_then_rejected_is_seen_by_the_agent(api, app, shop):
     held = api.post(f"/ucp/v1/checkout-sessions/{created['id']}/complete", json={}).json()
     assert held["status"] == "complete_in_progress"
     assert held["messages"] == [{"type": "info", "code": "held_for_approval",
-                                 "content": "Held for owner approval"}]
+                                 "content": "Orders over S$150.00 need the owner's OK. Your "
+                                            "order has been sent to the owner for approval."}]
     assert "order" not in held
 
     approval.reject(app.state.store, shop.id, held["kampungcart"]["order_id"], "Too many")

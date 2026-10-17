@@ -5,6 +5,7 @@ import pytest
 from agents.commerce import service as commerce
 from agents.commerce.service import OrderValidationError
 from backend.models import Actor, Channel
+from tests.conftest import NOW
 
 
 def quote(store, demo, *items):
@@ -161,4 +162,85 @@ def test_product_without_price_cannot_be_ordered(store, demo):
 
 def test_malformed_item(store, demo):
     [msg] = errors_for(store, demo, {"qty": "lots"})
-    assert msg.startswith("Item 1: needs product_id")
+    assert msg.startswith("Item 1: needs name or product_id")
+
+
+# --- items by name and owner review ------------------------------------------------------
+
+
+def test_items_by_name_match_english_or_local_name(store, demo):
+    demo.ondeh.name_local = "Onde-onde"
+    store.save_product(demo.ondeh)
+    q = quote(store, demo, {"name": "kuih lapis", "variant": "20 pcs", "qty": 1},
+              {"name": "ONDE-ONDE", "options": {"Flavour": "Pandan"}, "qty": 2})
+    assert [line.product_id for line in q.items] == [demo.lapis.id, demo.ondeh.id]
+    assert q.total == Decimal("41.00")
+    assert q.unpriced == [] and q.review_reasons == []
+
+
+def test_product_id_wins_over_name(store, demo):
+    q = quote(store, demo, {"product_id": demo.banana.id, "name": "Kuih Lapis", "qty": 1})
+    assert q.items[0].name == "Mini Banana Cake"
+
+
+def test_unknown_name_is_unpriced_and_needs_review(store, demo):
+    # Only exact names match: "Banana Cake" is not "Mini Banana Cake".
+    q = quote(store, demo, {"name": "Mini Banana Cake", "qty": 1},
+              {"name": "Banana Cake", "qty": 2, "request": "  less   sweet "})
+    assert [line.name for line in q.items] == ["Mini Banana Cake"]
+    assert q.total == Decimal("24.00")
+    assert [(u.name, u.qty, u.request) for u in q.unpriced] == [("Banana Cake", 2, "less sweet")]
+    assert q.review_reasons == ["2 x 'Banana Cake' is not on the menu; the owner will price it"]
+
+
+def test_only_unknown_items_quote_to_zero(store, demo):
+    q = quote(store, demo, {"name": "Custom cake", "qty": 1})
+    assert q.items == [] and q.total == Decimal("0.00") and len(q.unpriced) == 1
+
+
+def test_owner_review_reasons(store, demo):
+    q = commerce.get_quote(
+        store, demo.shop.id,
+        [{"name": "Kuih Lapis", "variant": "40 pcs", "qty": 121, "request": "Gift wrap"}],
+        pickup_at="2026-10-17T10:00", now=NOW)
+    assert q.review_reasons == [
+        "Custom request for Kuih Lapis; the owner must confirm it",
+        "Quantity 121 x Kuih Lapis is above this shop's usual maximum "
+        "(3x its largest pack of 40)",
+        "Total S$3630.00 is above the S$150.00 auto-approve limit",
+    ]
+    assert q.review_codes == ["custom_request", "unusual_qty", "over_limit"]
+    assert q.items[0].request == "Gift wrap" and q.pickup_problem == ""
+    assert commerce.hold_message(demo.shop, q.review_codes) == (
+        "Your order has a custom request that the owner needs to confirm. "
+        "This is a bigger quantity than the shop usually makes. "
+        "Orders over S$150.00 need the owner's OK. "
+        "Your order has been sent to the owner for approval.")
+
+
+def test_quote_for_a_closed_day_names_the_next_pickup_times(store, demo):
+    q = commerce.get_quote(store, demo.shop.id, [{"name": "Kuih Lapis", "variant": "20 pcs",
+                                                  "qty": 1}],
+                           pickup_at="2026-10-19T10:00", now=NOW)  # a Monday; Tue-Sun 9-6
+    assert q.pickup_problem == ("The shop is closed at Mon 19 Oct 10:00. "
+                                "Opening hours: Tue-Sun 9am-6pm.")
+    assert q.next_pickups == ["2026-10-20T09:00", "2026-10-20T09:30", "2026-10-20T10:00"]
+    assert q.total == Decimal("16.00")  # still priced
+
+
+def test_hold_message_for_risk_only_and_repeated_codes(demo):
+    assert commerce.hold_message(demo.shop, []) == (
+        "The owner checks some orders personally before confirming them. "
+        "Your order has been sent to the owner for approval.")
+    assert commerce.hold_sentences(demo.shop, ["unusual_qty", "unusual_qty"]) == [
+        "This is a bigger quantity than the shop usually makes."]
+
+
+@pytest.mark.parametrize("item, message", [
+    ({"name": "x" * 121, "qty": 1}, "name is too long"),
+    ({"name": "Durian Puff", "qty": 501}, "qty must be a whole number between 1 and 500"),
+    ({"name": "Durian Puff", "qty": True}, "qty must be a whole number"),
+])
+def test_bad_named_items(store, demo, item, message):
+    [msg] = errors_for(store, demo, item)
+    assert message in msg

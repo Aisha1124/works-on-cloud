@@ -1,24 +1,27 @@
-# Files NOT uploaded by `gcloud run deploy --source .`.
-# Without this file gcloud falls back to .gitignore; we want to be explicit so .env,
-# local data and node_modules never leave the machine. The Dockerfile needs everything else.
+# What `gcloud run deploy --source .` does NOT upload to Cloud Build.
+# Secrets never leave the machine; the image is built from the Dockerfile.
 .gcloudignore
-.git
-.gitignore
-.claude
-.venv
-**/__pycache__
-.pytest_cache
-
 .env
 .env.*
 !.env.example
 *.json.key
 service-account*.json
 secrets/
+
+.git/
+.gitignore
+.claude/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
 data/
 uploads/
 
-dashboard/node_modules
-dashboard/dist
-**/*.tsbuildinfo
-tests/eval_data/out/
+dashboard/node_modules/
+dashboard/dist/
+*.tsbuildinfo
+
+tests/
+docs/
+infra/

@@ -5,7 +5,7 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -81,6 +81,71 @@ class LocalJsonStore(Store):
     def save_shop(self, shop: Shop) -> Shop:
         return self._put("shops", shop.id, shop)
 
+    # --- owner keys (hash only) -------------------------------------------
+
+    def get_owner_key_hash(self, shop_id: str) -> str | None:
+        with self._lock:
+            return self._read("owner_keys").get(shop_id, {}).get("key_hash")
+
+    def set_owner_key_hash(self, shop_id: str, key_hash: str) -> None:
+        with self._lock:
+            rows = self._read("owner_keys")
+            rows[shop_id] = {"shop_id": shop_id, "key_hash": key_hash}
+            self._write("owner_keys", rows)
+
+    def find_shop_by_owner_key_hash(self, key_hash: str) -> str | None:
+        with self._lock:
+            rows = self._read("owner_keys")
+        return next((r["shop_id"] for r in rows.values() if r.get("key_hash") == key_hash), None)
+
+    def find_shops_by_owner_email(self, email: str) -> list[Shop]:
+        return [s for s in self.list_shops() if email and s.owner_email == email]
+
+    # --- short-lived secrets (hash only) ----------------------------------
+
+    def put_secret(self, collection: str, key_hash: str, data: dict) -> None:
+        with self._lock:
+            rows = self._read(collection)
+            rows[key_hash] = data
+            self._write(collection, rows)
+
+    def get_secret(self, collection: str, key_hash: str) -> dict | None:
+        with self._lock:
+            return self._read(collection).get(key_hash)
+
+    def pop_secret(self, collection: str, key_hash: str) -> dict | None:
+        with self._lock:
+            rows = self._read(collection)
+            row = rows.pop(key_hash, None)
+            if row is not None:
+                self._write(collection, rows)
+        return row
+
+    def take_rate(self, key_hash: str, limit: int, window_s: float, now: float,
+                  consume: bool = True) -> bool:
+        with self._lock:
+            rows = self._read("rate_limits")
+            row = rows.get(key_hash)
+            if row is None or now - row["start"] >= window_s:
+                row = {"start": now, "count": 0, "expires_at": now + window_s}
+            if row["count"] >= limit:
+                return False
+            if consume:
+                row["count"] += 1
+                rows = {k: r for k, r in rows.items() if r["expires_at"] > now}  # tidy up
+                rows[key_hash] = row
+                self._write("rate_limits", rows)
+            return True
+
+    def claim(self, collection: str, key_hash: str, data: dict) -> dict | None:
+        with self._lock:
+            rows = self._read(collection)
+            if key_hash in rows:
+                return rows[key_hash]
+            rows[key_hash] = data
+            self._write(collection, rows)
+        return None
+
     # --- products -------------------------------------------------------
 
     def get_product(self, product_id: str) -> Product | None:
@@ -114,6 +179,15 @@ class LocalJsonStore(Store):
     def save_order(self, order: Order) -> Order:
         return self._put("orders", order.id, order)
 
+    def transition_order(self, order_id: str, from_statuses: set[OrderStatus],
+                         update: dict[str, Any]) -> Order | None:
+        with self._lock:
+            order = self.get_order(order_id)
+            if order is None or order.status not in from_statuses:
+                return None
+            order = Order.model_validate({**order.model_dump(), **update})
+            return self._put("orders", order.id, order)
+
     # --- UCP checkout sessions ------------------------------------------
 
     def get_checkout(self, checkout_id: str) -> CheckoutSession | None:
@@ -121,6 +195,9 @@ class LocalJsonStore(Store):
 
     def save_checkout(self, checkout: CheckoutSession) -> CheckoutSession:
         return self._put("checkouts", checkout.id, checkout)
+
+    def list_checkouts(self, shop_id: str) -> list[CheckoutSession]:
+        return [c for c in self._all("checkouts", CheckoutSession) if c.shop_id == shop_id]
 
     # --- audit ----------------------------------------------------------
 

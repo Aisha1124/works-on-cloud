@@ -65,12 +65,19 @@ def test_pack_from_unit_and_packless_items():
     assert scorer.pack_size("10 inch") == 1
 
 
-def test_rushed_pickup():
-    always_open = SHOP.model_copy(update={"hours": ""})
+def test_rushed_pickup_without_notice():
+    always_open = SHOP.model_copy(update={"hours": "", "min_notice_hours": 0})
     assert score_rules(facts(shop=always_open, pickup_at=NOW + timedelta(hours=12))).score == 0
     risk = score_rules(facts(shop=always_open, pickup_at=NOW + timedelta(hours=11, minutes=59)))
     assert risk.score == 15
     assert risk.reasons == ["Rushed pickup: less than 12 hours away"]
+
+
+def test_rushed_means_within_12_hours_after_the_shops_notice():
+    always_open = SHOP.model_copy(update={"hours": ""})  # default 24 hours' notice
+    assert score_rules(facts(shop=always_open, pickup_at=NOW + timedelta(hours=36))).score == 0
+    risk = score_rules(facts(shop=always_open, pickup_at=NOW + timedelta(hours=35)))
+    assert risk.reasons == ["Rushed pickup: less than 36 hours away"]
 
 
 def test_outside_opening_hours():
@@ -264,3 +271,9 @@ def test_explain_without_key_or_model_falls_back(gemini_settings):
     assert run(scorer.explain(HELD, "", gemini_settings))[1] == "fallback"
     no_model = gemini_settings.model_copy(update={"gemini_model": ""})
     assert run(scorer.explain(HELD, "", no_model, fake_client()))[1] == "fallback"
+
+
+def test_items_not_on_the_menu():
+    risk = score_rules(facts(unpriced=2))
+    assert risk.score == 20
+    assert risk.reasons == ["2 item(s) not on the menu; the owner must price them"]

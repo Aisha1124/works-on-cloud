@@ -1,12 +1,13 @@
 import { ArrowRight, ImagePlus, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
+import { GoLiveDialog } from '../components/GoLiveDialog'
 import { MenuLines } from '../components/MenuLines'
 import { PhotoDrop } from '../components/PhotoDrop'
 import { ScanView, type ScanPhase } from '../components/ScanView'
 import { PHOTO_TIMEOUT_MS, api, errorText } from '../lib/api'
 import { useShop } from '../lib/shop'
-import type { DraftResponse, Product, ProductInput, Shop, ShopDetail } from '../lib/types'
+import type { DraftResponse, MenuChecks, Product, ProductInput, Shop, ShopDetail } from '../lib/types'
 import {
   Button,
   Card,
@@ -23,12 +24,15 @@ import {
   useToast,
 } from '../ui'
 
-const LOW_CONFIDENCE = 0.7
 const MONEY = /^\d{1,6}(\.\d{1,2})?$/
 const SHOP_TYPES = ['Home baker', 'Hawker stall', 'Heartland shop', 'Instagram seller', 'Cafe', 'Caterer']
 const NO_CATEGORY = 'Other items'
 
-const needsCheck = (p: Product) => p.confidence < LOW_CONFIDENCE
+const NO_REASONS: string[] = []
+
+function checkLine(n: number) {
+  return n === 1 ? '1 item needs a quick check' : `${n} items need a quick check`
+}
 
 /* ------------------------------------------------------------------ shop details */
 
@@ -384,6 +388,7 @@ function ProductEditor({
 function ProductRow({
   shopId,
   product,
+  reasons,
   categories,
   editing,
   onEdit,
@@ -393,6 +398,8 @@ function ProductRow({
 }: {
   shopId: string
   product: Product
+  /** Why the owner should check this item. Empty: nothing to check. */
+  reasons: string[]
   categories: string[]
   editing: boolean
   onEdit: () => void
@@ -423,15 +430,29 @@ function ProductRow({
       </li>
     )
   }
+  const flagged = reasons.length > 0
+  const reasonsId = `check-${product.id}`
   return (
-    <li className={cx('border-b-2 border-dotted border-muted/50 py-2 last:border-b-0', needsCheck(product) && '-mx-2 bg-turmeric-tint px-2')}>
+    <li
+      className={cx('border-b-2 border-dotted border-muted/50 py-2 last:border-b-0', flagged && '-mx-2 border-l-8 border-l-turmeric bg-turmeric-tint px-2')}
+      aria-describedby={flagged ? reasonsId : undefined}
+    >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
         <div className="min-w-0 flex-1">
           <MenuLines product={product} />
-          {needsCheck(product) && <Stamp kind="check" size="sm" className="mt-1 hidden sm:inline-flex" />}
+          {flagged && (
+            <div id={reasonsId} className="mt-1 text-sm">
+              <p className="font-semibold">Please check this</p>
+              <ul className="list-disc pl-5 text-ink-soft">
+                {reasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {needsCheck(product) && <Stamp kind="check" size="sm" className="sm:hidden" />}
+          {flagged && <Stamp kind="check" size="sm" />}
           <Toggle
             className="ml-auto pt-0.5"
             checked={product.available}
@@ -450,7 +471,7 @@ function ProductRow({
 
 /* ------------------------------------------------------------------ add photo */
 
-function AddPhotoPanel({ shopId, onAdded, onClose }: { shopId: string; onAdded: (p: Product[]) => void; onClose: () => void }) {
+function AddPhotoPanel({ shopId, onAdded, onClose }: { shopId: string; onAdded: (p: Product[], checks: MenuChecks) => void; onClose: () => void }) {
   const [files, setFiles] = useState<File[]>([])
   const [photos, setPhotos] = useState<string[]>([])
   const [phase, setPhase] = useState<ScanPhase | 'idle'>('idle')
@@ -471,7 +492,7 @@ function AddPhotoPanel({ shopId, onAdded, onClose }: { shopId: string; onAdded: 
       const res = await api<DraftResponse>(`/api/shops/${shopId}/photos`, { method: 'POST', form, timeoutMs: PHOTO_TIMEOUT_MS, signal: ctrl.signal })
       setResult(res)
       setPhase('done')
-      onAdded(res.products)
+      onAdded(res.products, res.checks)
     } catch (err) {
       if (ctrl.signal.aborted) return
       setError(errorText(err))
@@ -502,6 +523,7 @@ function AddPhotoPanel({ shopId, onAdded, onClose }: { shopId: string; onAdded: 
           photos={photos}
           phase={phase}
           products={result?.products ?? []}
+          checks={result?.checks}
           warnings={result?.warnings}
           error={error}
           onRetry={() => void upload(files)}
@@ -518,11 +540,9 @@ function AddPhotoPanel({ shopId, onAdded, onClose }: { shopId: string; onAdded: 
 
 export function CatalogReview() {
   const { data, setData, shopId } = useShop()
-  const navigate = useNavigate()
-  const toast = useToast()
   const [editing, setEditing] = useState<string | null>(null) // product id, or "new:<category>"
   const [addingPhoto, setAddingPhoto] = useState(false)
-  const [publishing, setPublishing] = useState(false)
+  const [goingLive, setGoingLive] = useState(false)
 
   useEffect(() => {
     document.documentElement.style.setProperty('--toast-lift', '4.5rem')
@@ -533,8 +553,11 @@ export function CatalogReview() {
 
   const detail = data!
   const { shop, products } = detail
+  const checks = detail.checks
+  const reasonsOf = (p: Product) => checks?.[p.id] ?? NO_REASONS
 
   const groups = useMemo(() => {
+    const flagged = (p: Product) => (checks?.[p.id]?.length ?? 0) > 0
     const byCat = new Map<string, Product[]>()
     for (const p of products) {
       const c = p.category.trim() || NO_CATEGORY
@@ -542,38 +565,39 @@ export function CatalogReview() {
     }
     const list = [...byCat.entries()].map(([category, items]) => ({
       category,
-      items: [...items].sort((a, b) => Number(needsCheck(b)) - Number(needsCheck(a))),
-      checks: items.filter(needsCheck).length,
+      items: [...items].sort((a, b) => Number(flagged(b)) - Number(flagged(a))),
+      checks: items.filter(flagged).length,
     }))
     return list.sort((a, b) => Number(b.checks > 0) - Number(a.checks > 0))
-  }, [products])
+  }, [products, checks])
   const categories = groups.map((g) => g.category).filter((c) => c !== NO_CATEGORY)
-  const toCheck = products.filter(needsCheck).length
+  const toCheck = products.filter((p) => reasonsOf(p).length > 0).length
 
   const update = (fn: (d: ShopDetail) => ShopDetail) => setData((prev) => (prev ? fn(prev) : prev))
+  // Checks look at the whole menu (duplicates, odd prices), so ask the server again after a change.
+  const refreshChecks = () => {
+    api<ShopDetail>(`/api/shops/${encodeURIComponent(shopId)}`).then(
+      (fresh) => update((d) => ({ ...d, checks: fresh.checks })),
+      () => {}, // keep the old flags; they're guidance only
+    )
+  }
   const saved = (p: Product) => {
-    update((d) => ({
-      ...d,
-      products: d.products.some((x) => x.id === p.id) ? d.products.map((x) => (x.id === p.id ? p : x)) : [...d.products, p],
-    }))
+    update((d) => {
+      const rest = { ...d.checks }
+      delete rest[p.id] // the owner just looked at it; the server confirms below
+      return {
+        ...d,
+        checks: rest,
+        products: d.products.some((x) => x.id === p.id) ? d.products.map((x) => (x.id === p.id ? p : x)) : [...d.products, p],
+      }
+    })
     setEditing(null)
+    refreshChecks()
   }
   const deleted = (id: string) => {
     update((d) => ({ ...d, products: d.products.filter((x) => x.id !== id) }))
     setEditing(null)
-  }
-
-  async function publish() {
-    setPublishing(true)
-    try {
-      const res = await api<ShopDetail>(`/api/shops/${shopId}/publish`, { method: 'POST' })
-      setData(res)
-      navigate(`/shop/${shopId}/live`)
-    } catch (err) {
-      toast.show(errorText(err), 'error')
-    } finally {
-      setPublishing(false)
-    }
+    refreshChecks()
   }
 
   return (
@@ -591,9 +615,7 @@ export function CatalogReview() {
               </h2>
               <p className="text-ink-soft">
                 {toCheck > 0
-                  ? toCheck === 1
-                    ? "1 item marked CHECK: we weren't sure we read it right."
-                    : `${toCheck} items marked CHECK: we weren't sure we read them right.`
+                  ? `${checkLine(toCheck)}. They're highlighted in yellow with the reason. You can still go live.`
                   : 'Tap the pencil to fix a name, price, pack or flavour.'}
               </p>
             </div>
@@ -610,7 +632,10 @@ export function CatalogReview() {
           {addingPhoto && (
             <AddPhotoPanel
               shopId={shopId}
-              onAdded={(added) => update((d) => ({ ...d, products: [...d.products, ...added] }))}
+              onAdded={(added, addedChecks) => {
+                update((d) => ({ ...d, products: [...d.products, ...added], checks: { ...d.checks, ...addedChecks } }))
+                refreshChecks()
+              }}
               onClose={() => setAddingPhoto(false)}
             />
           )}
@@ -650,6 +675,7 @@ export function CatalogReview() {
                     key={p.id}
                     shopId={shopId}
                     product={p}
+                    reasons={reasonsOf(p)}
                     categories={categories}
                     editing={editing === p.id}
                     onEdit={() => setEditing(p.id)}
@@ -688,7 +714,7 @@ export function CatalogReview() {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <p className="min-w-0 font-mono text-sm">
             <span className="font-semibold">{products.length} items</span>
-            {toCheck > 0 && <span className="text-ink-soft"> · {toCheck} to check</span>}
+            {toCheck > 0 && <span className="text-ink-soft"> · {checkLine(toCheck)}</span>}
             {shop.published && <span className="hidden text-ink-soft sm:inline"> · live at /s/{shop.slug}</span>}
           </p>
           {shop.published ? (
@@ -696,12 +722,13 @@ export function CatalogReview() {
               Your shop is live <ArrowRight aria-hidden className="size-4" />
             </Link>
           ) : (
-            <Button size="lg" loading={publishing} onClick={publish} disabled={!products.length}>
+            <Button size="lg" onClick={() => setGoingLive(true)} disabled={!products.length}>
               Go live <ArrowRight aria-hidden className="size-5" />
             </Button>
           )}
         </div>
       </div>
+      {goingLive && <GoLiveDialog shopId={shopId} defaultName={shop.name} onClose={() => setGoingLive(false)} onLive={setData} />}
     </>
   )
 }

@@ -31,10 +31,13 @@ It is **not** a full or certified UCP implementation.
 |---|---|---|
 | (no order yet) | `incomplete` / `ready_for_complete` | what is missing |
 | `auto_approved`, `approved`, `ready`, `done` | `completed` + `order` | none |
-| `pending_approval` (held for the owner) | `complete_in_progress` | `info` `held_for_approval`: "Held for owner approval" |
-| `rejected` | `canceled` | `error` `rejected_by_shop` with the owner's reason |
+| `pending_approval` (held for the owner) | `complete_in_progress` | `info` `held_for_approval`: a plain reason plus "Your order has been sent to the owner for approval." (e.g. "The shop is closed at your pickup time. ...") |
+| `rejected` | `canceled` | `error` `rejected_by_shop` with the owner's reason (or "The shop didn't respond in time" when a held order expired) |
+| `cancelled` (by the buyer, on their status page) | `canceled` | `error` `canceled_by_buyer` |
 
-The agent polls `GET /ucp/v1/checkout-sessions/{id}` to see the owner's decision.
+The agent polls `GET /ucp/v1/checkout-sessions/{id}` to see the owner's decision. A held order
+that the owner doesn't decide within the shop's approval timeout (default 24 hours) is rejected
+when it is next read.
 
 ## Not implemented
 
@@ -52,7 +55,6 @@ The agent polls `GET /ucp/v1/checkout-sessions/{id}` to see the owner's decision
 - Catalog: no `context`-based localisation, media, ratings, `selected`/`preferences` option
   resolution, or price filters.
 - `continue_url` / `requires_escalation`: there is no buyer-facing web page to hand off to.
-- Confirmation email after completion.
 - Real payment of any kind.
 
 ## Deviations (KampungCart-specific)
@@ -81,7 +83,10 @@ These are things our demo needs that the spec does not define. All of them are n
 5. **Variant ids**: a product with several packs has variant ids `<product id>.v<n>`. A product
    with one price has a single variant whose id is the product id.
 6. **`links` is empty**: we have no terms-of-service or privacy page yet.
-7. **`order.permalink_url`** points to the checkout session URL, as there is no order web page.
+7. **`order.permalink_url`** is the buyer's private order status page `/o/{id}?t={token}`
+   (also in `kampungcart.status_url`). Anyone with the link can see the order and cancel it up
+   to the shop's cutoff, so the agent should only pass it to the buyer. If `buyer.email` is set,
+   the buyer gets status emails (confirmed, rejected, expired, cancelled).
 8. **Held orders** use `complete_in_progress` (described above), and a rejection ends as
    `canceled`.
 
@@ -92,7 +97,7 @@ These are things our demo needs that the spec does not define. All of them are n
 - Names, notes and agent names are untrusted data. They are never followed; the risk check flags
   instructions, links and payment-change requests in notes.
 - `complete` is rate-limited per client: 10 orders a minute per IP (the first
-  `X-Forwarded-For` hop on Cloud Run), shared with MCP `place_order`. The limit is held in
+  `X-Forwarded-For` hop on Cloud Run), shared with MCP `place_pickup_order`. The limit is held in
   memory per instance.
 - Every UCP request writes an `external_call` audit event with `actor = external_agent` and the
   agent name. The profile, and catalog calls without a shop, are logged under

@@ -49,7 +49,14 @@ class GeminiProduct(BaseModel):
     )
     description: str = Field(default="", description="Only if printed. Omit otherwise.")
     confidence: float = Field(ge=0, le=1, description="How sure you read this item correctly.")
-    notes: str = Field(default="", description="What is unclear. Omit if nothing.")
+    unclear: bool = Field(
+        default=False,
+        description="true if the name, price or pack size was hard to read. Omit if clear.",
+    )
+    unclear_reason: str = Field(
+        default="",
+        description='Short reason when unclear, e.g. "price smudged". Omit if clear.',
+    )
 
 
 class GeminiSection(BaseModel):
@@ -86,6 +93,8 @@ class DraftProduct(BaseModel):
     available: bool = True
     description: str = ""
     confidence: float = Field(default=1.0, ge=0, le=1)
+    # Why the owner should check this item (read-time reasons; see agents/catalog/checks.py).
+    check_reasons: list[str] = Field(default_factory=list)
 
 
 class CatalogDraft(BaseModel):

@@ -7,9 +7,9 @@ function subscribe(cb: () => void) {
   return () => window.removeEventListener(OWNER_KEY_CHANGED, cb)
 }
 
-/** The owner key, re-rendering when it is set or cleared (e.g. after a 401). */
-export function useOwnerKey(): string | null {
-  return useSyncExternalStore(subscribe, getOwnerKey, () => null)
+/** This shop's owner key, re-rendering when it is set or cleared (e.g. after a 401). */
+export function useOwnerKey(shopId: string): string | null {
+  return useSyncExternalStore(subscribe, () => getOwnerKey(shopId), () => null)
 }
 
 export interface Loaded<T> {

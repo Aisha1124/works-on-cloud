@@ -4,6 +4,8 @@ Only plumbing lives here: which shops are visible, per-client rate limits, input
 the audit record of every external call. Business logic stays in agents/commerce.
 """
 
+import hashlib
+import re
 import threading
 import time
 from collections import defaultdict, deque
@@ -43,9 +45,20 @@ def clean_agent_name(name: str | None) -> str:
 
 
 def area_of(shop: Shop) -> str:
-    """The last part of the address, e.g. "Tampines" from "Blk 123, Tampines"."""
+    """The last part of the address, e.g. "Tampines" from "Blk 123, Tampines" or from
+    "Tampines, Singapore" (a trailing country/postcode part is skipped)."""
     parts = [p.strip() for p in shop.address.split(",") if p.strip()]
+    while len(parts) > 1 and re.fullmatch(r"(?i)(republic of )?singapore( \d{6})?|\d{6}",
+                                          parts[-1]):
+        parts.pop()
     return parts[-1] if parts else ""
+
+
+def mask_phone(phone: str) -> str:
+    """'+65 9123 4567' -> '****4567'. Customer phone numbers are never sent back to agents,
+    and order emails only show the last 4 digits."""
+    digits = "".join(c for c in phone if c.isdigit())
+    return f"****{digits[-4:]}" if len(digits) > 4 else ("****" if digits else "")
 
 
 def client_key(headers, client_host: str | None) -> str:
@@ -81,6 +94,40 @@ class RateLimiter:
                 return False
             hits.append(now)
             return True
+
+    def blocked(self, key: str) -> bool:
+        """True if `key` has used up its limit. Records nothing."""
+        now = self._clock()
+        with self._lock:
+            hits = self._hits.get(key)
+            while hits and now - hits[0] >= self.window_s:
+                hits.popleft()
+            return bool(hits) and len(hits) >= self.limit
+
+
+class StoreRateLimiter:
+    """Same API as RateLimiter, but the counts live in the store (Firestore in production), so
+    every Cloud Run instance shares them and a restart doesn't reset them. Keys (IPs, emails)
+    are stored hashed. The window starts at a key's first hit."""
+
+    def __init__(self, store: Store, name: str, limit: int, window_s: float, clock=time.time):
+        self.store = store
+        self.name = name
+        self.limit = limit
+        self.window_s = window_s
+        self._clock = clock
+
+    def _key(self, key: str) -> str:
+        return hashlib.sha256(f"{self.name}:{key}".encode()).hexdigest()
+
+    def allow(self, key: str) -> bool:
+        """Count one event; False (and nothing counted) when the limit is used up."""
+        return self.store.take_rate(self._key(key), self.limit, self.window_s, self._clock())
+
+    def blocked(self, key: str) -> bool:
+        """True if `key` has used up its limit. Records nothing."""
+        return not self.store.take_rate(self._key(key), self.limit, self.window_s,
+                                        self._clock(), consume=False)
 
 
 ORDER_LIMIT = 10  # orders per client per minute

@@ -1,30 +1,27 @@
-# Keep the build context small and secrets out of the image.
-.git
-.gitignore
-.claude
-.venv
-**/__pycache__
-**/*.pyc
-.pytest_cache
-
-# Secrets and local data
+# Secrets and local config
 .env
 .env.*
 !.env.example
 *.json.key
 service-account*.json
 secrets/
+
+# Local state and tooling
+.git/
+.claude/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
 data/
 uploads/
 
-# Built inside the image instead
-dashboard/node_modules
-dashboard/dist
-**/*.tsbuildinfo
+# Dashboard build output and deps (rebuilt inside the image)
+dashboard/node_modules/
+dashboard/dist/
+*.tsbuildinfo
 
 # Not needed at runtime
 tests/
-scripts/
 docs/
 infra/
-*.md

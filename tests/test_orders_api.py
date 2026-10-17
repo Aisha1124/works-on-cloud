@@ -9,9 +9,9 @@ from agents.commerce import service as commerce
 from backend.api.config import Settings
 from backend.api.main import create_app
 from backend.models import Product, Shop, Variant
-from tests.conftest import GOOD_PHONE, NOW, SATURDAY_10AM
+from tests.conftest import GOOD_PHONE, NOW, SATURDAY_10AM, TEST_OWNER_KEY, give_key
 
-KEY = "test-owner-key"
+KEY = TEST_OWNER_KEY
 H = {"X-Owner-Key": KEY}
 
 
@@ -31,7 +31,7 @@ def api(app) -> TestClient:
 def shop_orders(app):
     """A shop with one auto-approved and two held orders."""
     store, settings = app.state.store, app.state.settings
-    shop = store.save_shop(Shop(slug="mak", name="Mak's Kuih"))
+    shop = give_key(store, store.save_shop(Shop(slug="mak", name="Mak's Kuih")))
     lapis = store.save_product(Product(shop_id=shop.id, name="Kuih Lapis",
                                        variants=[Variant(label="20 pcs", price=Decimal("16"))]))
 
@@ -79,7 +79,8 @@ def test_get_order_and_404s(api, shop_orders):
     assert r.status_code == 200
     assert r.json()["status"] == "auto_approved"
     assert api.get(url(shop, "/orders/missing"), headers=H).status_code == 404
-    assert api.get(f"/api/shops/nope/orders/{ok.id}", headers=H).status_code == 404
+    # A key only opens its own shop: an unknown shop id is a 401, like any other shop.
+    assert api.get(f"/api/shops/nope/orders/{ok.id}", headers=H).status_code == 401
 
 
 def test_approve_and_reject(api, shop_orders):
@@ -152,7 +153,7 @@ def test_patch_shop_settings_rejects_bad_input(api, shop_orders, body):
 
 
 def test_patch_unknown_shop(api):
-    assert api.patch("/api/shops/nope", json={"hours": "9am-5pm"}, headers=H).status_code == 404
+    assert api.patch("/api/shops/nope", json={"hours": "9am-5pm"}, headers=H).status_code == 401
 
 
 def test_api_routes_are_not_swallowed_by_dashboard(api, shop_orders):

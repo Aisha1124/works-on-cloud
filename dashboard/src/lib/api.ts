@@ -1,4 +1,4 @@
-import { clearOwnerKey, getOwnerKey } from './ownerKey'
+import { clearOwnerKey, getOwnerKey, shopIdOf } from './ownerKey'
 
 /** str(error) is always a friendly sentence that is safe to show. */
 export class ApiError extends Error {
@@ -17,10 +17,8 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   json?: unknown
   form?: FormData
-  /** Owner routes send X-Owner-Key. Public routes don't. */
+  /** Owner routes (/api/shops/{id}/...) send that shop's X-Owner-Key. Public routes don't. */
   owner?: boolean
-  /** Try this key instead of the stored one (checking a key before keeping it). */
-  ownerKey?: string
   timeoutMs?: number
   signal?: AbortSignal
 }
@@ -41,9 +39,13 @@ function friendly(status: number, body: unknown): string {
 }
 
 export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', json, form, owner = true, ownerKey, timeoutMs = 15000, signal } = opts
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  if (owner) headers['X-Owner-Key'] = ownerKey ?? getOwnerKey() ?? ''
+  const { method = 'GET', json, form, owner = true, timeoutMs = 15000, signal } = opts
+  // X-Requested-With: the server only accepts cookie-signed changes from this dashboard (CSRF guard).
+  const headers: Record<string, string> = { Accept: 'application/json', 'X-Requested-With': 'kampungcart' }
+  // Owner routes: a stored draft/backup key if this tab has one, else the session cookie.
+  const shopId = owner ? shopIdOf(path) : null
+  const key = shopId ? getOwnerKey(shopId) : null
+  if (key) headers['X-Owner-Key'] = key
   if (json !== undefined) headers['Content-Type'] = 'application/json'
 
   const timeout = AbortSignal.timeout(timeoutMs)
@@ -71,7 +73,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
     // not JSON (e.g. a proxy error page): fall through to a generic message
   }
   if (!res.ok) {
-    if (res.status === 401 && owner && ownerKey === undefined) clearOwnerKey()
+    if (res.status === 401 && shopId) clearOwnerKey(shopId)
     throw new ApiError(res.status, friendly(res.status, body))
   }
   return body as T
