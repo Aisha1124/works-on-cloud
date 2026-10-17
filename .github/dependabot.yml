@@ -1,0 +1,21 @@
+# Weekly update PRs. Actions are pinned to commit SHAs (supply-chain safety); Dependabot bumps
+# the SHA and the "# vX.Y.Z" comment together, so pins don't go stale.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: terraform
+    directories: ["/infra/terraform", "/infra/bootstrap"]
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

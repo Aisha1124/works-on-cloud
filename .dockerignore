@@ -25,3 +25,6 @@ dashboard/dist/
 tests/
 docs/
 infra/
+
+# GitHub Actions auth writes a short-lived credentials file into the workspace
+gha-creds-*.json

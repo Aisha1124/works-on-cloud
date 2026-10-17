@@ -35,14 +35,22 @@ tokens from `Aisha1124/works-on-cloud`.
 |---|---|---|
 | `kampungcart-run` | Cloud Run at runtime | read the 2 secrets, Firestore, the uploads bucket, write logs/metrics |
 | `gh-deployer` | `deploy.yml`, **main branch only** | push images, create revisions, shift traffic |
-| `gh-tf-plan` | `infra.yml` on PRs | read-only (viewer, security reviewer), state lock |
+| `gh-tf-plan` | `infra.yml` on PRs (any branch) | metadata only: custom `tfPlanReader` role + narrow viewer roles, read state. **No** Firestore documents, bucket objects or secret values |
 | `gh-terraform` | `infra.yml` apply, **`production` environment only** | admin on what Terraform manages |
+
+Also hardened:
+- The default compute SA (`PROJECT_NUMBER-compute@`) has its project-wide Editor removed
+  (`google_project_iam_member_remove` in `iam.tf`). Nothing runs as it.
+- All GitHub Actions are pinned to a commit SHA; Dependabot (`.github/dependabot.yml`) proposes
+  updates weekly for actions, Terraform providers and Docker base images.
+- `generativelanguage.googleapis.com` (Gemini API-key API) is disabled; Gemini goes through Vertex AI.
+- `.dockerignore` excludes `gha-creds-*.json`, the short-lived file that `google-github-actions/auth` writes.
 
 ## Image
 
 | Stage | Base | What it does |
 |---|---|---|
-| `dashboard` | `node:22-slim` | `npm ci` + `npm run build` -> `dashboard/dist` |
+| `dashboard` | `node:24-slim` | `npm ci` + `npm run build` -> `dashboard/dist` |
 | `python-deps` | `python:3.12-slim` + uv | `uv sync --frozen --no-dev` from `uv.lock` -> `/app/.venv` |
 | `runtime` | `python:3.12-slim` | venv + `agents/` + `backend/` + `dashboard/dist`, non-root, `uvicorn` on `$PORT` |
 

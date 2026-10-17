@@ -99,15 +99,44 @@ resource "google_service_account" "tf_plan" {
   depends_on   = [google_project_service.apis]
 }
 
+# Plan runs from ANY branch, so it gets metadata only: no Firestore documents, no objects in the
+# uploads bucket, no secret values. (roles/viewer was too broad: it can read Firestore data.)
+resource "google_project_iam_custom_role" "tf_plan_reader" {
+  role_id     = "tfPlanReader"
+  title       = "Terraform plan reader (metadata only)"
+  description = "Read the config of resources Terraform manages. No customer data."
+  permissions = [
+    "resourcemanager.projects.get",
+    "iam.serviceAccounts.get",
+    "iam.serviceAccounts.list",
+    "iam.serviceAccounts.getIamPolicy",
+    "datastore.databases.get",
+    "datastore.databases.getMetadata",
+    "storage.buckets.get",
+    "storage.buckets.getIamPolicy",
+    "artifactregistry.repositories.get",
+    "artifactregistry.repositories.getIamPolicy",
+  ]
+}
+
 resource "google_project_iam_member" "tf_plan" {
   for_each = toset([
-    "roles/viewer",
-    "roles/iam.securityReviewer", # read IAM policies during refresh
-    "roles/secretmanager.viewer", # secret metadata only, never values
+    "roles/run.viewer",                      # service config, not request data
+    "roles/monitoring.viewer",               # uptime checks, alert policies, channels
+    "roles/iam.workloadIdentityPoolViewer",  # the GitHub pool and provider
+    "roles/serviceusage.serviceUsageViewer", # which APIs are enabled
+    "roles/iam.securityReviewer",            # read IAM policies during refresh
+    "roles/secretmanager.viewer",            # secret metadata only, never values
     "roles/serviceusage.serviceUsageConsumer",
   ])
   project = var.project_id
   role    = each.value
+  member  = google_service_account.tf_plan.member
+}
+
+resource "google_project_iam_member" "tf_plan_reader" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.tf_plan_reader.name
   member  = google_service_account.tf_plan.member
 }
 
@@ -117,9 +146,21 @@ resource "google_billing_account_iam_member" "tf_plan_budget" {
   member             = google_service_account.tf_plan.member
 }
 
-# Plans take a state lock (a small object in the bucket), so plan needs write on objects there.
+# Read-only on state: the PR plan runs with -lock=false, so it never writes the lock object.
 resource "google_storage_bucket_iam_member" "tf_plan_state" {
   bucket = "${var.project_id}-tfstate" # created by infra/bootstrap
-  role   = "roles/storage.objectUser"
+  role   = "roles/storage.objectViewer"
   member = google_service_account.tf_plan.member
+}
+
+# --- Default compute service account ------------------------------------------------------------
+
+# GCP gives the default compute SA (PROJECT_NUMBER-compute@) Editor on the whole project. Nothing
+# here runs as it (Cloud Run uses kampungcart-run), so remove that binding. (The
+# google_project_default_service_accounts resource can't be used: it matches the SA by its old
+# display name, which newer projects no longer have.)
+resource "google_project_iam_member_remove" "compute_default_editor" {
+  project = var.project_id
+  role    = "roles/editor"
+  member  = "serviceAccount:${data.google_project.this.number}-compute@developer.gserviceaccount.com"
 }
