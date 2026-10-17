@@ -174,8 +174,10 @@ def test_full_chat_order(client, app, shop, llm):
     assert client.get(path).json()["status"] == "confirmed"
     # The MCP calls are in the shop's audit log under the assistant's name.
     summaries = [e.summary for e in app.state.store.list_audit_events(shop.id)]
-    assert any("KampungCart Shop Assistant called place_pickup_order via MCP (ok)" in s
-               for s in summaries)
+    for call_name in ("get_menu", "get_quote", "place_pickup_order"):
+        assert any(f"KampungCart Shop Assistant called {call_name} via MCP (ok)" in s
+                   for s in summaries)
+    assert not any("unnamed agent" in s for s in summaries)
 
 
 def test_large_order_is_held_for_the_owner(client, app, shop, llm):
@@ -290,6 +292,8 @@ def test_status_check_works_for_this_chats_order(client, app, shop, llm):
     send(client, "any news?", r.json()["chat_id"])
     status = data_of(tool_results(llm, "get_order_status")[0])
     assert status["status"] == "pending_owner_approval"
+    latest = app.state.store.list_audit_events(shop.id, limit=1)[0]
+    assert latest.summary.startswith("KampungCart Shop Assistant called get_order_status")
 
 
 def test_instruction_names_the_shop_and_the_rules(shop):

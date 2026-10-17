@@ -214,6 +214,7 @@ def guard_tool_call(tool, args: dict[str, Any], tool_context) -> dict[str, Any] 
     state = tool_context.state
     if tool.name not in TOOLS:
         return {"error": "That tool isn't available here."}
+    args["agent_name"] = AGENT_NAME  # so the audit log names the assistant on every call
     if tool.name == "get_order_status":
         order_id = str(args.get("order_id", "")).strip()
         if order_id not in {o["order_id"] for o in state.get("orders", [])}:
@@ -221,7 +222,6 @@ def guard_tool_call(tool, args: dict[str, Any], tool_context) -> dict[str, Any] 
         return None
     args["shop_slug"] = state["shop_slug"]  # this shop only, whatever the model sent
     if tool.name in ("get_quote", "place_pickup_order"):
-        args["agent_name"] = AGENT_NAME
         for line in args.get("items") or []:
             if isinstance(line, dict):
                 for key in _PRICE_KEYS & set(line):

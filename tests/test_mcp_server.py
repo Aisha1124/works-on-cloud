@@ -147,6 +147,13 @@ async def test_get_menu_lists_every_item_with_availability(app, shop):
     assert [i["name"] for i in lapis["items"]] == ["Kuih Lapis"]
 
 
+async def test_get_menu_takes_an_agent_name_for_the_audit_log(app, shop):
+    async with connect(app, name="") as client:
+        await client.call_tool("get_menu", {"shop_slug": "mak-kuih", "agent_name": "Menu Bot"})
+    latest = app.state.store.list_audit_events(shop.id, limit=1)[0]
+    assert latest.summary == "Menu Bot called get_menu via MCP (ok)"
+
+
 async def test_get_quote_by_name_prices_from_the_menu(app, shop):
     async with connect(app) as client:
         quote = (await client.call_tool("get_quote", {
