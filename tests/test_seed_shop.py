@@ -51,3 +51,27 @@ def test_seed_never_overwrites_an_existing_shop(tmp_path, monkeypatch):
     assert store.get_shop("mak-kuih").daily_capacity == 3
     assert store.get_product("kuih-lapis").available is False
     assert store.get_product("ondeh-ondeh") is None
+
+
+def test_seed_gives_an_older_shop_the_example_details(tmp_path, monkeypatch, capsys):
+    store = LocalJsonStore(tmp_path)
+    seed = load_seed()
+    monkeypatch.setattr(seed, "get_store", lambda settings: store)
+    seed.main()
+    # A shop seeded before the example details existed, then edited by its owner.
+    shop = store.get_shop("mak-kuih")
+    store.save_shop(shop.model_copy(update={
+        "phone": "+65 9123 4567", "address": "Blk 123 Tampines St 11 #01-01",
+        "example": False, "hours": "Daily 8am-8pm"}))
+    capsys.readouterr()
+
+    seed.main()  # the next deploy
+    assert "updated its example details" in capsys.readouterr().out
+    shop = store.get_shop("mak-kuih")
+    assert shop.phone == "+65 0000 0000"
+    assert shop.address == "Tampines, Singapore"
+    assert shop.example is True
+    assert shop.hours == "Daily 8am-8pm"
+
+    seed.main()
+    assert "left as it is" in capsys.readouterr().out

@@ -1,7 +1,8 @@
 """Create the published sample shop that external agents order from, only if it doesn't exist.
 The container runs this at every startup (see Dockerfile); an existing shop, its menu and its
 orders are never overwritten, so a redeploy never wipes data. Only its owner key follows
-OWNER_KEY.
+OWNER_KEY, and its example details (phone, address, "Example shop" label) are kept as below,
+so a shop seeded before they changed gets them too.
 
 Fixed ids, so scripts/try_mcp.py and the UCP request files in scripts/ucp/ can refer to them:
   shop slug  mak-kuih
@@ -32,6 +33,8 @@ from backend.store import get_store  # noqa: E402
 
 SHOP_ID = "mak-kuih"
 SLUG = "mak-kuih"
+# An example, not a real business: placeholder phone, area only, "Example shop" label.
+EXAMPLE_DETAILS = {"phone": "+65 0000 0000", "address": "Tampines, Singapore", "example": True}
 
 
 def main() -> None:
@@ -40,18 +43,22 @@ def main() -> None:
     key = settings.owner_key.get_secret_value().strip() if settings.owner_key else ""
     existing = store.get_shop(SHOP_ID)
     if existing is not None:
-        # Never overwrite: the owner may have edited the menu or settings, and orders point
-        # at these products. Only the owner key follows OWNER_KEY (so it can be rotated).
+        # Never overwrite the rest: the owner may have edited the menu or settings, and orders
+        # point at these products. Only the example details and the owner key (so it can be
+        # rotated) are set.
+        changed = any(getattr(existing, k) != v for k, v in EXAMPLE_DETAILS.items())
+        if changed:
+            store.save_shop(existing.model_copy(update=EXAMPLE_DETAILS))
         if key:
             store.set_owner_key_hash(existing.id, hash_owner_key(key))
-        print(f"Sample shop '{existing.name}' already exists; left as it is."
+        print(f"Sample shop '{existing.name}' already exists; "
+              + ("updated its example details." if changed else "left as it is.")
               + (" Owner key: OWNER_KEY." if key else ""))
         return
     shop = store.save_shop(Shop(
         id=SHOP_ID, slug=SLUG, name="Mak's Kuih", tagline="Nyonya kuih, made fresh",
-        shop_type="Home baker", address="Tampines, Singapore",
-        # An example, not a real business: placeholder phone, area only, "Example shop" label.
-        hours="Tue-Sun 9am-6pm", phone="+65 0000 0000", published=True, example=True,
+        shop_type="Home baker", hours="Tue-Sun 9am-6pm", published=True,
+        **EXAMPLE_DETAILS,
         owner_email=(settings.sample_owner_email or "").strip().lower(),
         email_verified=bool(settings.sample_owner_email)))
     store.save_product(Product(
