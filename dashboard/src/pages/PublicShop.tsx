@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ErrorCard } from '../components/ErrorCard'
 import { MenuLines } from '../components/MenuLines'
+import { OrderChat } from '../components/OrderChat'
 import { ReportShop } from '../components/ReportShop'
 import { AddToOrder, Checkout, OrderResult } from '../components/ShopOrder'
 import { api } from '../lib/api'
@@ -26,6 +27,14 @@ function group(products: Product[]) {
 function exampleAsk(slug: string, products: Product[]): string {
   const item = products.find((p) => p.available)?.name ?? 'your favourite item'
   return `Order 2 boxes of ${item} from ${slug} for Saturday 10am pickup.`
+}
+
+/** The same, for the shop's own chat (it already knows which shop). */
+function exampleChat(products: Product[]): string {
+  const p = products.find((x) => x.available)
+  if (!p) return 'What can I order for Saturday pickup?'
+  const pack = p.variants[0]?.label
+  return `2 boxes of ${p.name}${pack ? ` ${pack}` : ''} for Saturday 10am`
 }
 
 // The last order placed from this tab, so a reload still shows its status.
@@ -139,6 +148,10 @@ export function PublicShop() {
 
           {placed && <OrderResult key={placed.order_id} initial={placed} onNewOrder={newOrder} />}
 
+          {!paused && page.data.products.length > 0 && (
+            <OrderChat slug={shop.slug} shopName={shop.name} example={exampleChat(page.data.products)} />
+          )}
+
           {page.data.products.length === 0 ? (
             <EmptyState message="The menu is being updated. Please check back soon." />
           ) : (
@@ -180,12 +193,14 @@ export function PublicShop() {
           )}
 
           <section className="flex flex-col gap-2 border-2 border-ink bg-ink p-4 text-receipt shadow-hard sm:p-5" aria-labelledby="ai-order">
-            <h2 id="ai-order" className="flex items-center gap-2 text-xl text-receipt">
-              <Bot aria-hidden className="size-5" /> Order with your AI assistant
+            <h2 id="ai-order" className="flex items-start gap-2 text-xl text-receipt">
+              <Bot aria-hidden className="mt-1 size-5 flex-none" /> Ordering with AI
             </h2>
+            <p>Order by chatting with our AI assistant on any shop page, no setup needed. AI apps can also connect through MCP.</p>
             <p className="text-sm">
-              Add <code className="font-mono break-all text-turmeric">{page.data.links.mcp}</code> as a connector in Claude (or any MCP app), then ask
-              it to order from “{shop.slug}”.
+              To order from an AI app that supports MCP, add{' '}
+              <code className="font-mono break-all text-turmeric">{page.data.links.mcp}</code> as a connector. Any AI (ChatGPT, Gemini or Claude)
+              can also read this page's link to answer questions about the menu, prices and opening hours.
             </p>
             <p className="text-sm">
               <span className="text-turmeric">Try:</span> <q>{exampleAsk(shop.slug, page.data.products)}</q>

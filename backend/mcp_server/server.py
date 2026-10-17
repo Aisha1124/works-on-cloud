@@ -276,8 +276,9 @@ def create_mcp_server(store: Store, settings: Settings,
                                     max_length=MAX_QUERY_LEN)] = "",
         category: Annotated[str | None, Field(description="Only this category (from get_shop).",
                                               max_length=60)] = None,
+        agent_name: AgentName = None,
     ) -> dict[str, Any]:
-        agent, _ = caller(ctx)
+        agent, _ = caller(ctx, agent_name)
 
         def body(shop: Shop):
             found = commerce.search_products(store, shop.id, query, category,
@@ -359,8 +360,9 @@ def create_mcp_server(store: Store, settings: Settings,
         ctx: Context,
         order_id: Annotated[str, Field(description="order_id from place_pickup_order.",
                                        max_length=MAX_ID_LEN)],
+        agent_name: AgentName = None,
     ) -> dict[str, Any]:
-        agent, _ = caller(ctx)
+        agent, _ = caller(ctx, agent_name)
 
         def body(shop: Shop):
             status = commerce.get_order_status(store, shop.id, order_id, settings)

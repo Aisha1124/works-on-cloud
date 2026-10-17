@@ -10,7 +10,11 @@ from agents.commerce import service as commerce
 from backend import privacy
 from backend.api.config import Settings, get_settings
 from backend.api.deps import AUTH_FAIL_LIMIT, AUTH_FAIL_WINDOW_S
-from backend.api.routes import health, orders, owner, products, public, shops
+from agents.shopper.assistant import ShopAssistant
+from backend.api.routes import chat, health, orders, owner, products, public, shops
+from backend.api.routes.chat import (
+    CHAT_IP_LIMIT, CHAT_IP_WINDOW_S, CHAT_SITE_LIMIT, CHAT_SITE_WINDOW_S,
+)
 from backend.api.routes.owner import LINK_EMAIL_LIMIT, LINK_IP_LIMIT, LINK_WINDOW_S
 from backend.api.routes.shops import (
     DRAFT_LIMIT, DRAFT_WINDOW_S, VERIFY_RESEND_LIMIT, VERIFY_RESEND_WINDOW_S,
@@ -79,6 +83,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.report_ip_limiter = limiter("report_ip", REPORT_IP_LIMIT, REPORT_IP_WINDOW_S)
     app.state.report_shop_limiter = limiter("report_shop", REPORT_SHOP_LIMIT,
                                             REPORT_SHOP_WINDOW_S)
+    app.state.chat_ip_limiter = limiter("chat_ip", CHAT_IP_LIMIT, CHAT_IP_WINDOW_S)
+    app.state.chat_site_limiter = limiter("chat_site", CHAT_SITE_LIMIT, CHAT_SITE_WINDOW_S)
+    # "Order with AI": an ADK agent that orders through this app's own /mcp route.
+    app.state.shop_assistant = ShopAssistant(app, settings)
 
     app.include_router(health.router)
     app.include_router(owner.router)
@@ -86,6 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(orders.router)
     app.include_router(products.router)
     app.include_router(public.router)  # /api/public/... and /s/{slug}
+    app.include_router(chat.router)  # /api/public/shops/{slug}/chat
 
     # External agents. Both BEFORE the SPA catch-all below.
     app.router.routes.append(mcp_route(mcp, settings))

@@ -14,7 +14,7 @@ import { Button, Signboard, buttonClass, cx } from '../ui'
 const STEPS: { icon: LucideIcon; who: string; line: string }[] = [
   { icon: Camera, who: 'Owner', line: 'Snaps a menu photo. Gemini turns it into a menu.' },
   { icon: QrCode, who: 'Owner', line: 'Taps Go live and gets a shop link, QR code and owner key.' },
-  { icon: Bot, who: 'Customers', line: 'Order from the link, or ask their AI assistant (Claude, Gemini) to order.' },
+  { icon: Bot, who: 'Customers', line: 'Order from the shop link. Any AI can read the menu from it; AI apps connected through MCP can also order.' },
   { icon: ShieldCheck, who: 'Orders', line: "Normal orders confirm automatically. Unusual ones wait for the owner's OK." },
 ]
 
@@ -30,9 +30,9 @@ function AudienceButtons({ onOwner }: { onOwner: () => void }) {
         </span>
       </button>
       <Link to={`/s/${SAMPLE_SHOP.slug}`} className={buttonClass('approve', 'lg', tile)}>
-        <span className="font-mono text-xs tracking-widest uppercase opacity-90">I'm a customer</span>
+        <span className="font-mono text-xs tracking-widest uppercase opacity-90">See what customers see</span>
         <span className="flex items-center gap-2 font-display text-2xl font-extrabold">
-          See a live shop <ArrowRight aria-hidden className="size-6" />
+          Try Mak's Kuih <ArrowRight aria-hidden className="size-6" />
         </span>
       </Link>
     </div>
@@ -170,7 +170,7 @@ export function Onboarding() {
           title="Make your shop AI‑ready from one photo."
           subtitle={
             <span className="hidden sm:inline">
-              Customers and their AI assistants can read your menu and place pickup orders. You approve anything unusual.
+              Customers order from your link. Any AI can read your menu from it; AI apps connected through MCP can also order. You approve anything unusual.
             </span>
           }
         />
