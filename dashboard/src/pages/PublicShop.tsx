@@ -9,6 +9,7 @@ import { AddToOrder, Checkout, OrderResult } from '../components/ShopOrder'
 import { api } from '../lib/api'
 import { addLine, useCartQuote } from '../lib/cart'
 import { useLoad } from '../lib/hooks'
+import { DEFAULT_SHOP_COLOUR, shopColourHex } from '../lib/shopColours'
 import type { CartLine, Product, PublicShopPage, WebOrder } from '../lib/types'
 import { EmptyState, PriceTag, ReceiptCard, ReceiptDivider, Signboard, Skeleton, Stamp, buttonClass, useToast } from '../ui'
 
@@ -110,7 +111,12 @@ export function PublicShop() {
               <span>A sample menu to try KampungCart. It is not a real business.</span>
             </p>
           )}
-          <Signboard title={shop.name} subtitle={shop.tagline || undefined} plate={shop.shop_type || 'KampungCart shop'} />
+          <Signboard
+            title={shop.name}
+            subtitle={shop.tagline || undefined}
+            plate={shop.shop_type || 'KampungCart shop'}
+            color={shop.theme_colour && shop.theme_colour !== DEFAULT_SHOP_COLOUR ? shopColourHex(shop.theme_colour) : undefined}
+          />
 
           {(shop.hours || shop.address || shop.phone) && (
             <ul className="flex flex-col gap-2 border-2 border-ink bg-receipt p-4 shadow-hard-sm sm:flex-row sm:flex-wrap sm:gap-x-6">

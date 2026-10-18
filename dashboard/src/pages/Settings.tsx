@@ -1,7 +1,8 @@
-import { PauseCircle, Save } from 'lucide-react'
+import { Check, PauseCircle, Save } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { api, errorText } from '../lib/api'
 import { useShop } from '../lib/shop'
+import { DEFAULT_SHOP_COLOUR, SHOP_COLOURS, type ShopColour } from '../lib/shopColours'
 import type { DayHours, Shop, ShopDetail } from '../lib/types'
 import { Button, Card, Input, Skeleton, Toggle, cx, useToast } from '../ui'
 
@@ -16,6 +17,7 @@ interface Form {
   limit: string
   paused: boolean
   pausedUntil: string
+  colour: ShopColour
 }
 
 function formOf(detail: ShopDetail): Form {
@@ -29,6 +31,7 @@ function formOf(detail: ShopDetail): Form {
     limit: s.auto_approve_limit,
     paused: !!s.paused_until,
     pausedUntil: s.paused_until ?? '',
+    colour: s.theme_colour ?? DEFAULT_SHOP_COLOUR,
   }
 }
 
@@ -53,7 +56,7 @@ function check(f: Form): Record<string, string> {
 }
 
 /** Owner settings that decide which orders come in: opening hours, notice, daily limit,
- *  approval timeout, cancel cutoff, auto-approve limit, and pausing orders. */
+ *  approval timeout, cancel cutoff, auto-approve limit, pausing orders, and the shop page colour. */
 export function Settings() {
   const { data, shopId, setData, reload } = useShop()
   const [form, setForm] = useState<Form | null>(null)
@@ -83,6 +86,7 @@ export function Settings() {
           cancel_cutoff_hours: +f.cutoff,
           auto_approve_limit: f.limit.trim(),
           paused_until: f.paused ? f.pausedUntil : null,
+          theme_colour: f.colour,
         },
       })
       setData((prev) => (prev ? { ...prev, shop } : prev))
@@ -178,6 +182,33 @@ export function Settings() {
         <Input label="Auto-approve orders up to (S$)" inputMode="decimal" className="font-mono" value={f.limit} onChange={(e) => set({ limit: e.target.value })} error={errors.limit} hint="Bigger orders wait for your OK." />
         <Input label="Answer held orders within (hours)" inputMode="numeric" value={f.timeout} onChange={(e) => set({ timeout: e.target.value })} error={errors.timeout} hint="If you don't approve or reject in time, the order is rejected and the customer is told." />
         <Input label="Customers can cancel until (hours before pickup)" inputMode="numeric" value={f.cutoff} onChange={(e) => set({ cutoff: e.target.value })} error={errors.cutoff} hint="You get an email when someone cancels." />
+      </Card>
+
+      <Card className="flex flex-col gap-3">
+        <fieldset className="flex flex-col gap-3">
+          <legend className="font-display text-xl font-bold">Shop colour</legend>
+          <p className="text-sm text-ink-soft">The colour of the banner at the top of your shop page.</p>
+          <div className="flex flex-wrap gap-3">
+            {SHOP_COLOURS.map((c) => (
+              <label key={c.value} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="shop-colour"
+                  value={c.value}
+                  checked={f.colour === c.value}
+                  onChange={() => set({ colour: c.value })}
+                  className="peer sr-only"
+                />
+                <span className="flex items-center gap-2 border-2 border-ink bg-receipt py-1.5 pr-3 pl-1.5 text-sm font-semibold peer-checked:shadow-hard-sm peer-checked:bg-turmeric-tint peer-focus-visible:outline-3 peer-focus-visible:outline-turmeric">
+                  <span aria-hidden className="grid size-7 place-items-center border-2 border-ink text-receipt" style={{ background: c.hex }}>
+                    {f.colour === c.value && <Check className="size-4" />}
+                  </span>
+                  {c.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
       </Card>
 
       <div className="sticky bottom-4 flex justify-end">

@@ -26,7 +26,7 @@ from backend import emails, mailer, owner_session
 from backend.audit import log_event
 from backend.images import get_image_store
 from backend.mcp_server import MCP_PATH
-from backend.models import Actor, Product, Shop, new_id
+from backend.models import Actor, Product, Shop, ShopColour, new_id
 from backend.owner_auth import issue_owner_key
 from backend.ucp.convert import orderable
 from backend.ucp.profile import base_url
@@ -334,6 +334,7 @@ class ShopSettingsUpdate(BaseModel):
     approval_timeout_hours: int | None = Field(default=None, ge=1, le=168)
     cancel_cutoff_hours: int | None = Field(default=None, ge=0, le=168)
     paused_until: date | None = None
+    theme_colour: ShopColour | None = None
 
 
 NULLABLE = {"daily_capacity", "paused_until"}

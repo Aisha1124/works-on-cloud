@@ -152,6 +152,36 @@ def test_patch_shop_settings_rejects_bad_input(api, shop_orders, body):
     assert r.status_code in (400, 422)
 
 
+def test_shop_colour_defaults_to_chili(app, shop_orders):
+    assert shop_orders[0].theme_colour == "chili"
+    # Shops saved before the setting existed load with the default.
+    assert Shop.model_validate({"slug": "old", "name": "Old"}).theme_colour == "chili"
+
+
+def test_patch_shop_colour(api, app, shop_orders):
+    shop = shop_orders[0]
+    r = api.patch(url(shop), json={"theme_colour": "pandan"}, headers=H)
+    assert r.status_code == 200, r.text
+    assert r.json()["theme_colour"] == "pandan"
+    assert app.state.store.get_shop(shop.id).theme_colour == "pandan"
+
+
+@pytest.mark.parametrize("colour", ["purple", "#2F7D4F", "PANDAN", "", "chili; x", 3])
+def test_patch_shop_colour_only_presets(api, app, shop_orders, colour):
+    shop = shop_orders[0]
+    r = api.patch(url(shop), json={"theme_colour": colour}, headers=H)
+    assert r.status_code == 422
+    assert app.state.store.get_shop(shop.id).theme_colour == "chili"
+
+
+def test_public_shop_page_has_the_colour(api, app, shop_orders):
+    store = app.state.store
+    shop = store.save_shop(shop_orders[0].model_copy(update={"published": True}))
+    assert api.get(f"/api/public/shops/{shop.slug}").json()["shop"]["theme_colour"] == "chili"
+    api.patch(url(shop), json={"theme_colour": "laut"}, headers=H)
+    assert api.get(f"/api/public/shops/{shop.slug}").json()["shop"]["theme_colour"] == "laut"
+
+
 def test_patch_unknown_shop(api):
     assert api.patch("/api/shops/nope", json={"hours": "9am-5pm"}, headers=H).status_code == 401
 

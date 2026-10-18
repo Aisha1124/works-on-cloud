@@ -29,6 +29,21 @@ describe('customer shop page', () => {
     expect((await screen.findByTestId('landed')).dataset.path).toBe('/')
   })
 
+  it('keeps the default banner colour when the shop has not picked one', async () => {
+    stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
+    renderAt('/s/mak-kuih', routes)
+    const banner = (await screen.findByRole('heading', { level: 1, name: "Mak's Kuih" })).closest('header')!
+    expect(banner.style.getPropertyValue('--signboard-bg')).toBe('')
+  })
+
+  it("paints the banner in the shop's colour", async () => {
+    const page = { ...PAGE, shop: { ...PAGE.shop, theme_colour: 'laut' } }
+    stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: page } : undefined))
+    renderAt('/s/mak-kuih', routes)
+    const banner = (await screen.findByRole('heading', { level: 1, name: "Mak's Kuih" })).closest('header')!
+    expect(banner.style.getPropertyValue('--signboard-bg')).toBe('#1F5F8B')
+  })
+
   it('says customers can order by chatting here, and AI apps can connect through MCP', async () => {
     stubApi((url) => (url === '/api/public/shops/mak-kuih' ? { body: PAGE } : undefined))
     renderAt('/s/mak-kuih', routes)

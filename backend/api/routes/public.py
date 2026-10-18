@@ -24,7 +24,7 @@ from backend.api.routes.shops import ShopLinks, shop_links
 from backend.external import (
     MAX_ID_LEN, PLATFORM, RATE_LIMIT_MESSAGE, ShopNotFound, published_shop, published_shops,
 )
-from backend.models import Actor, Channel, Order, OrderStatus, Product, Shop
+from backend.models import Actor, Channel, Order, OrderStatus, Product, Shop, ShopColour
 from backend.timeutil import to_sg
 from backend.ucp.profile import base_url
 
@@ -44,6 +44,7 @@ class PublicShop(BaseModel):
     phone: str
     currency: str
     example: bool = False  # the sample shop: shows an "Example shop" label
+    theme_colour: ShopColour = "chili"  # header colour of the shop page
     min_notice_hours: int = 24
     paused_until: date | None = None
     # "Not taking orders until Mon 26 Oct 2026." while paused, else "".

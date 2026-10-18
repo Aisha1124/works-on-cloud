@@ -310,7 +310,7 @@
       radial-gradient(circle at calc(100% - 12px) 12px, var(--ink) 3px, #0000 3.5px),
       radial-gradient(circle at 12px calc(100% - 12px), var(--ink) 3px, #0000 3.5px),
       radial-gradient(circle at calc(100% - 12px) calc(100% - 12px), var(--ink) 3px, #0000 3.5px),
-      var(--chili);
+      var(--signboard-bg, var(--chili));
     color: var(--receipt);
     border: 2px solid var(--ink);
     box-shadow: var(--hard-shadow);
