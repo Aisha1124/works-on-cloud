@@ -191,7 +191,7 @@ Not done yet: changing the owner email or rotating the backup key from the dashb
 - Also set there: approval timeout, cancel cutoff and the auto-approve limit.
 
 ## Connect an AI agent
-Order by chatting with our AI assistant on any shop page, no setup needed. AI apps can also connect through MCP.
+Order by chatting with our AI agent on any shop page, no setup needed. Any AI agent can also connect through MCP.
 Every published shop can be used by any AI agent that speaks MCP (Claude, Gemini, ChatGPT with
 MCP support) through one MCP server, using the streamable HTTP transport:
 
