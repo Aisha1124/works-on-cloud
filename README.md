@@ -10,7 +10,7 @@ Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
 **Live:** https://kampungcart-42629827376.asia-southeast1.run.app
 
-Order by chatting with our AI assistant on any shop page, no setup needed. AI apps can also connect through MCP.
+Order by chatting with our AI agent on any shop page, no setup needed. Any AI agent can also connect through MCP.
 
 ### Try it in 2 minutes
 1. **Owner: photo → live shop.** Open the live URL, tap **I run a shop · Upload my menu** and drop a photo of a
@@ -50,7 +50,7 @@ Mak's Kuih is an example shop, not a real business: its page says so.
 
 ## Team: Works On Cloud
 - Aisha Siddiqua (Team Lead): product, app development, AI agents, MCP, deck. GitHub: https://github.com/Aisha1124, LinkedIn: https://www.linkedin.com/in/aisha-siddiqua-1b01a9268
-- Bijay Pathak: cloud infrastructure, CI/CD and deployment. GitHub: https://github.com/beejay777
+- Bijay Pathak: cloud infrastructure, CI/CD and deployment. GitHub: https://github.com/beejay777, LinkedIn: https://www.linkedin.com/in/beejaypathak/
 
 ## Stack
 Gemini · Google ADK · Cloud Run · Firestore · Cloud Storage · Secret Manager
@@ -110,6 +110,7 @@ npm scripts call each tool with `node ./node_modules/...` directly. Keep that pa
   `SMTP_PASSWORD`), which can reach any owner without a verified domain. `EMAIL_PROVIDER=resend`
   keeps Resend working. Without the provider's credentials, emails are only logged. The Go live
   screen and login page say "Check your spam folder if you don't see our email."
+- **Shop colour:** in Settings, pick one of 6 preset colours for your shop page banner (Chili red is the default).
 - **Sample shop:** `mak-kuih` is seeded at startup. It is clearly an example: its shop page shows
   an "Example shop" label, its phone is the placeholder `+65 0000 0000`, its address is only
   "Tampines, Singapore", and its llms.txt and MCP shop info say it is an example. No other shop
