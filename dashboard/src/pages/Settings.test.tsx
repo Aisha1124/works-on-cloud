@@ -46,6 +46,22 @@ describe('owner settings', () => {
     expect(body.opening_hours[0].closed).toBe(true)
   })
 
+  it('picks one of the preset shop colours and saves it', async () => {
+    const calls = setup()
+    renderAt('/shop/shop1/settings', routes)
+    const group = await screen.findByRole('group', { name: 'Shop colour' })
+    const radios = within(group).getAllByRole('radio') as HTMLInputElement[]
+    expect(radios.map((r) => r.value)).toEqual(['chili', 'pandan', 'kopi', 'laut', 'bunga', 'charcoal'])
+    expect((within(group).getByRole('radio', { name: 'Chili red' }) as HTMLInputElement).checked).toBe(true)
+    expect(within(group).queryByRole('textbox')).toBeNull()
+
+    fireEvent.click(within(group).getByRole('radio', { name: 'Pandan green' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(await screen.findByText('Settings saved.')).toBeTruthy()
+    const body = JSON.parse(String(calls.find((c) => c.init?.method === 'PATCH')!.init!.body))
+    expect(body.theme_colour).toBe('pandan')
+  })
+
   it('checks the numbers before saving', async () => {
     const calls = setup()
     renderAt('/shop/shop1/settings', routes)

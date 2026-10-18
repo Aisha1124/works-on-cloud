@@ -6,10 +6,13 @@ Money is always Decimal. In JSON it is a string (e.g. "12.50"), never a float.
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
+
+# Preset header colours for the public shop page. The dashboard maps each name to a hex value.
+ShopColour = Literal["chili", "pandan", "kopi", "laut", "bunga", "charcoal"]
 
 
 def new_id() -> str:
@@ -65,6 +68,8 @@ class Shop(BaseModel):
     currency: str = "SGD"
     published: bool = False
     auto_approve_limit: Decimal = Decimal("150")
+    # Header colour of the public shop page: one of the presets, never free text.
+    theme_colour: ShopColour = "chili"
     # Only the seeded sample shop (mak-kuih): its pages say it is an example, not a real shop.
     example: bool = False
     # Set when the shop goes live. Owner-only: never part of a public or agent response.

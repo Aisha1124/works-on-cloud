@@ -1,5 +1,6 @@
 // Mirrors backend/models.py. Money is a string ("12.50"): the backend computes it as Decimal.
 import type { Actor, RiskLevel } from '../ui'
+import type { ShopColour } from './shopColours'
 
 export type Money = string
 
@@ -24,6 +25,8 @@ export interface Shop {
   daily_capacity: number | null
   /** "2026-10-26": no new orders until that day. */
   paused_until: string | null
+  /** Header colour of the public shop page (one of SHOP_COLOURS). Missing = chili. */
+  theme_colour?: ShopColour
   created_at: string
 }
 
@@ -179,7 +182,7 @@ export interface AuditPage {
   offset: number
 }
 
-export type PublicShop = Pick<Shop, 'slug' | 'name' | 'tagline' | 'shop_type' | 'address' | 'hours' | 'phone' | 'currency'> & {
+export type PublicShop = Pick<Shop, 'slug' | 'name' | 'tagline' | 'shop_type' | 'address' | 'hours' | 'phone' | 'currency' | 'theme_colour'> & {
   /** Only the sample shop: it shows an "Example shop" label. */
   example?: boolean
   min_notice_hours?: number
