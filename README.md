@@ -7,14 +7,18 @@ AI shopping agents are becoming the new way people shop. Small shops without web
 Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
 ## For judges
-
-**Live:** https://kampungcart-42629827376.asia-southeast1.run.app
+| | |
+|---|---|
+| Live app | https://kampungcart-42629827376.asia-southeast1.run.app |
+| Demo video | https://drive.google.com/file/d/1hU9Ib6UQdnt760w8A6tIPrtFl-RPAWwv/view?pli=1 |
+| Example shop | https://kampungcart-42629827376.asia-southeast1.run.app/s/mak-kuih |
+| Owner dashboard | Shop owner login → Use backup key instead → paste the owner key provided in the submission deck ("For judges" box). It opens the example shop only. |
 
 Order by chatting with our AI agent on any shop page, no setup needed. Any AI agent can also connect through MCP.
 
 ### Try it in 2 minutes
 1. **Owner: photo → live shop.** Open the live URL, tap **I run a shop · Upload my menu** and drop a photo of a
-   menu or price list (a fictional sample menu is at `tests/eval_data/menus/rumah-manis-menu.jpg`). Gemini reads it into a
+   menu or price list (a fictional sample menu is at [rumah-manis-menu.jpg](tests/eval_data/menus/rumah-manis-menu.jpg)). Gemini reads it into a
    menu; items it wants you to check are highlighted. Tap **Go live**, enter a shop name and an
    email. You get a shop link, a QR code and a backup key.
 2. **Customer: order from the example shop.** Open `https://kampungcart-42629827376.asia-southeast1.run.app/s/mak-kuih`. Add
@@ -25,7 +29,7 @@ Order by chatting with our AI agent on any shop page, no setup needed. Any AI ag
 3. **A big order gets held.** Order again, this time **10 × Kuih Lapis, 40 pcs** (S$300). That is
    above the shop's S$150 auto-approve limit, so it shows **Sent to the owner for approval** and
    the status page keeps checking.
-4. **Owner approves.** Sign in to the example shop (below), open **Orders → Needs approval** and
+4. **Owner approves.** Sign in to the example shop with the owner key provided in the submission deck, open **Orders → Needs approval** and
    tap **Approve**. The customer's status page turns to **Confirmed** within about 10 seconds.
    The **Audit log** tab shows every step and who did it (customer, risk agent, system, owner).
 5. **Order by chatting.** On `https://kampungcart-42629827376.asia-southeast1.run.app/s/mak-kuih`, type in the **Order with AI** box:
@@ -39,12 +43,6 @@ Order by chatting with our AI agent on any shop page, no setup needed. Any AI ag
    pickup this Saturday at 10am. Name Siti, phone +65 9123 4567."* The agent finds the shop, gets
    a quote and places the order; it appears in the owner's Orders tab as "via MCP". Ask it for a
    Monday instead and it gets the reason ("closed") plus the next 3 free pickup times.
-
-### Sign in to the example shop
-On the live site, **Shop owner login** (top right) → **Use backup key instead** → paste the
-example shop's backup key. Judges get the key in the submission deck ("For judges" box); it is
-not in this repo. It opens `mak-kuih` only. (If `SAMPLE_OWNER_EMAIL` is set, that inbox
-can also sign in with an emailed link.)
 
 Mak's Kuih is an example shop, not a real business: its page says so.
 
