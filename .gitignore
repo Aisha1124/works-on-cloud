@@ -33,10 +33,12 @@ dashboard/dist/
 # Catalog eval output
 tests/eval_data/out/
 
-# Real shop menu photos stay local (eval expected JSON files are committed)
+# Real shop menu photos stay local (eval expected JSON files are committed).
+# Only the fictional sample menu is committed.
 tests/eval_data/menus/*.jpg
 tests/eval_data/menus/*.jpeg
 tests/eval_data/menus/*.png
 tests/eval_data/menus/*.webp
 tests/eval_data/menus/*.heic
 tests/eval_data/menus/*.heif
+!tests/eval_data/menus/rumah-manis-menu.jpg

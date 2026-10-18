@@ -6,7 +6,7 @@ image, compares item names, prices, pack units and variant counts.
 
 Usage:
     uv run python scripts/eval_catalog.py
-    uv run python scripts/eval_catalog.py --image bakery_platters
+    uv run python scripts/eval_catalog.py --image hawker_board
     uv run python scripts/eval_catalog.py --rescore      (re-score saved output, no API calls)
 """
 

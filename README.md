@@ -2,22 +2,22 @@
 
 **Make any shop AI-ready from one photo.**
 
-AI shopping agents are becoming the new way people shop. Small shops without websites are invisible to them. KampungCart turns a menu or price-list photo into an AI-agent-ready store with built-in fraud checks and owner approval.
+AI shopping agents are becoming the new way people shop. Small shops without websites are invisible to them. KampungCart turns a menu or price-list photo into an AI-agent-ready store with built-in risk checks and owner approval.
 
 Built for the Google Cloud AI Builder Cup 2026 — Retail & Commerce.
 
 ## For judges
 
-**Live:** `https://<LIVE-URL>` (placeholder: the deployed Cloud Run URL goes here)
+**Live:** https://kampungcart-42629827376.asia-southeast1.run.app
 
 Order by chatting with our AI assistant on any shop page, no setup needed. AI apps can also connect through MCP.
 
 ### Try it in 2 minutes
 1. **Owner: photo → live shop.** Open the live URL, tap **I run a shop · Upload my menu** and drop a photo of a
-   menu or price list (sample photos are in `tests/eval_data/menus/`). Gemini reads it into a
+   menu or price list (a fictional sample menu is at `tests/eval_data/menus/rumah-manis-menu.jpg`). Gemini reads it into a
    menu; items it wants you to check are highlighted. Tap **Go live**, enter a shop name and an
    email. You get a shop link, a QR code and a backup key.
-2. **Customer: order from the example shop.** Open `https://<LIVE-URL>/s/mak-kuih`. Add
+2. **Customer: order from the example shop.** Open `https://kampungcart-42629827376.asia-southeast1.run.app/s/mak-kuih`. Add
    **Kuih Lapis, 20 pcs**, pick a day and time (only times the shop can take are offered: open
    hours, 24 hours' notice, no Mondays), enter a name and a Singapore phone number like
    `+65 9123 4567`, and place the order. It is **confirmed**, and you get a private link to
@@ -28,38 +28,38 @@ Order by chatting with our AI assistant on any shop page, no setup needed. AI ap
 4. **Owner approves.** Sign in to the example shop (below), open **Orders → Needs approval** and
    tap **Approve**. The customer's status page turns to **Confirmed** within about 10 seconds.
    The **Audit log** tab shows every step and who did it (customer, risk agent, system, owner).
-5. **Order by chatting.** On `https://<LIVE-URL>/s/mak-kuih`, type in the **Order with AI** box:
+5. **Order by chatting.** On `https://kampungcart-42629827376.asia-southeast1.run.app/s/mak-kuih`, type in the **Order with AI** box:
    *"2 boxes of kuih lapis 20 pcs for Saturday 10am"*. The KampungCart Shop Assistant shows the
    options, quotes the total from the menu, suggests pickup times the shop can take, asks for a
    name and phone, and asks "Shall I place this order?". Say **yes** and it places the order and
    shows the private status link. Ask for **10 boxes of 40 pcs** and it tells you the owner must
    approve, and the order goes to **Needs approval** like any other.
 6. **AI order via MCP.** In Claude (Settings → Connectors → Add custom connector) add
-   `https://<LIVE-URL>/mcp`, then ask: *"Order 2 boxes of Kuih Lapis, 20 pcs, from mak-kuih for
+   `https://kampungcart-42629827376.asia-southeast1.run.app/mcp`, then ask: *"Order 2 boxes of Kuih Lapis, 20 pcs, from mak-kuih for
    pickup this Saturday at 10am. Name Siti, phone +65 9123 4567."* The agent finds the shop, gets
    a quote and places the order; it appears in the owner's Orders tab as "via MCP". Ask it for a
    Monday instead and it gets the reason ("closed") plus the next 3 free pickup times.
 
 ### Sign in to the example shop
 On the live site, **Shop owner login** (top right) → **Use backup key instead** → paste the
-example shop's backup key. That key is the `OWNER_KEY` secret of the deployment; the team shares
-it with judges separately. It opens `mak-kuih` only. (If `SAMPLE_OWNER_EMAIL` is set, that inbox
+example shop's backup key. Judges get the key in the submission deck ("For judges" box); it is
+not in this repo. It opens `mak-kuih` only. (If `SAMPLE_OWNER_EMAIL` is set, that inbox
 can also sign in with an emailed link.)
 
 Mak's Kuih is an example shop, not a real business: its page says so.
 
 ## Team: Works On Cloud
-- Aisha Siddiqua (Lead): agents, AI, MCP
-- Bijay Pathak: infrastructure, deployment, security, deck
+- Aisha Siddiqua (Team Lead): product, app development, AI agents, MCP, deck. GitHub: https://github.com/Aisha1124, LinkedIn: https://www.linkedin.com/in/aisha-siddiqua-1b01a9268
+- Bijay Pathak: cloud infrastructure, CI/CD and deployment. GitHub: https://github.com/beejay777
 
 ## Stack
 Gemini · Google ADK · Cloud Run · Firestore · Cloud Storage · Secret Manager
 
-The catalog extraction prompt was first prototyped and tested in Google AI Studio with a real Singapore home-bakery price list.
+The catalog extraction prompt was first prototyped and tested in Google AI Studio with sample Singapore menu and price-list photos.
 
-One Cloud Run container (asia-southeast1) serves the API, the MCP server, the UCP endpoints and the built dashboard. In production Gemini runs through Vertex AI (`GOOGLE_GENAI_USE_VERTEXAI=true`, the Cloud Run service account, no API key) at the `global` location, because the Gemini Interactions API the app uses is served from `global` only on Vertex AI (preview). Local development uses `GEMINI_API_KEY`. It is deployed with `gcloud run deploy --source .`, which uses Cloud Build only to build the image.
+One Cloud Run container (asia-southeast1) serves the API, the MCP server, the UCP endpoints and the built dashboard. In production Gemini runs through Vertex AI (`GOOGLE_GENAI_USE_VERTEXAI=true`, the Cloud Run service account, no API key) at the `global` location, because the Gemini Interactions API the app uses is served from `global` only on Vertex AI (preview). Local development uses `GEMINI_API_KEY`.
 
-Deploy steps (from Google Cloud Shell) are in [infra/DEPLOY.md](infra/DEPLOY.md). Production runs
+Deploys run automatically on every push to `main` through GitHub Actions: tests, image build, Cloud Run deploy, a smoke test, and an automatic rollback to the previous revision if the smoke test fails. The Google Cloud infrastructure is defined in Terraform; see [infra/README.md](infra/README.md). Manual deploy steps with `gcloud run deploy --source .` (from Google Cloud Shell) stay in [infra/DEPLOY.md](infra/DEPLOY.md) as a fallback. Production runs
 with `STORE_BACKEND=firestore`: shops, orders, the audit log, sessions and rate limits live in
 Firestore (Native mode, asia-southeast1), so they survive restarts and redeploys and all instances
 share them. Menu photos go to a private Cloud Storage bucket. The sample shop `mak-kuih` is created
@@ -70,7 +70,7 @@ at startup only if it doesn't exist yet. Local development uses `STORE_BACKEND=l
 - `agents/`: ADK + Gemini agents
 - `backend/`: FastAPI APIs, MCP server, UCP endpoint
 - `dashboard/`: owner dashboard
-- `infra/`: deploy docs
+- `infra/`: Terraform and deploy docs
 - `docs/`: deck and architecture
 - `tests/`: evaluation data
 
@@ -113,8 +113,8 @@ npm scripts call each tool with `node ./node_modules/...` directly. Keep that pa
 - **Sample shop:** `mak-kuih` is seeded at startup. It is clearly an example: its shop page shows
   an "Example shop" label, its phone is the placeholder `+65 0000 0000`, its address is only
   "Tampines, Singapore", and its llms.txt and MCP shop info say it is an example. No other shop
-  shows the label. Judges can sign in with the backup key `OWNER_KEY` (Shop owner login → Use
-  backup key instead). Set `SAMPLE_OWNER_EMAIL` to receive its order emails and sign in by email.
+  shows the label. Judges can sign in with the backup key from the submission deck's "For judges"
+  box (Shop owner login → Use backup key instead). Set `SAMPLE_OWNER_EMAIL` to receive its order emails and sign in by email.
 
 ## Security
 - **One key per shop.** Owner keys are 256-bit random tokens (`kc_…`). Only a SHA-256 hash is
@@ -195,7 +195,7 @@ Every published shop can be used by any AI agent that speaks MCP (Claude, Gemini
 MCP support) through one MCP server, using the streamable HTTP transport:
 
 - Local: `http://localhost:8000/mcp`
-- Cloud Run: `https://<your-service-url>/mcp`. Set `BASE_URL` to the service's public URL. The
+- Cloud Run: `https://kampungcart-42629827376.asia-southeast1.run.app/mcp`. Set `BASE_URL` to the service's public URL. The
   server only accepts requests whose Host is localhost or the host in `BASE_URL`.
 
 ### Tools
@@ -226,7 +226,7 @@ The read tools are public. `place_pickup_order` is limited to 10 orders a minute
 
 ### Claude Desktop
 **Deployed server (HTTPS):** in Claude Desktop, open Settings → Connectors → Add custom
-connector, then paste `https://<your-service-url>/mcp`.
+connector, then paste `https://kampungcart-42629827376.asia-southeast1.run.app/mcp`.
 
 **Local server:** `claude_desktop_config.json` starts local (stdio) servers, so bridge to the
 HTTP endpoint with [`mcp-remote`](https://github.com/geelen/mcp-remote), which needs Node.js.
