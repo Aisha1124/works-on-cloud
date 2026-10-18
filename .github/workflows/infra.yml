@@ -27,6 +27,7 @@ env:
   TF_INPUT: "0"
   TF_VAR_billing_account: ${{ vars.TF_BILLING_ACCOUNT }}
   TF_VAR_alert_email: ${{ vars.TF_ALERT_EMAIL }}
+  TF_VAR_smtp_enabled: "true" # smtp-user and smtp-password have values (added 2026-10-18)
 
 defaults:
   run:
