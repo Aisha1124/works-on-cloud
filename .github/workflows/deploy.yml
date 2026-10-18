@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths-ignore:
       - "infra/**"
+      - ".github/workflows/infra.yml" # Terraform-only; infra.yml applies it
       - "docs/**"
       - "**.md"
   workflow_dispatch:
