@@ -85,11 +85,13 @@ jobs:
       - name: Deploy new revision
         # Only the image changes. Env vars, secrets, scaling and probes are owned by Terraform.
         # --session-affinity matches run.tf: the ADK chat keeps conversations in instance memory.
+        # No --revision-suffix: a fixed revision name stays in the service template, and the next
+        # terraform apply (which ignores the name) then fails with 409 "revision already exists".
+        # The commit SHA is on the image (org.opencontainers.image.revision label) instead.
         run: |
           gcloud run deploy "$SERVICE" --region "$REGION" --quiet \
             --image "${IMAGE}@${{ steps.build.outputs.digest }}" \
-            --session-affinity \
-            --revision-suffix "${GITHUB_SHA::7}-${GITHUB_RUN_ATTEMPT}"
+            --session-affinity
           gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet
 
       - name: Smoke test
