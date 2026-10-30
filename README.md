@@ -8,7 +8,7 @@ Adyen's surveys found that Singaporeans who've used AI assistants to help them s
 
 Built for the **Google Cloud AI Builder Cup 2026 — Retail & Commerce**.
 
-![KampungCart home page: Make your shop AI-ready from one photo](docs/KampungCart_.png)
+![KampungCart home page: Make your shop AI-ready from one photo](docs/screenshot.png)
 
 **Contents:** [For judges](#for-judges) · [Try it](#try-it-in-2-minutes) · [How it works](#how-it-works) · [Stack](#stack) · [Test results](#test-results) · [Security](#security) · [Connect an AI agent](#connect-an-ai-agent)
 
@@ -318,9 +318,3 @@ KampungCart works end to end today on the live app. The next step is to put it i
 2. **Learn from their menus:** add the menus they actually use to our test set, so menu reading improves on real handwriting, photos and languages.
 3. **Finish owner account tools:** change the owner email and rotate the backup key from the dashboard.
 4. **Complete UCP support,** so more AI shopping agents can order through open standards.
-
----
-
-## License
-
-[MIT](LICENSE) © 2026 Aisha Siddiqua and Bijay Pathak (Works On Cloud)
