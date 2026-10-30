@@ -8,7 +8,7 @@ Adyen's surveys found that Singaporeans who've used AI assistants to help them s
 
 Built for the **Google Cloud AI Builder Cup 2026 — Retail & Commerce**.
 
-![KampungCart home page: Make your shop AI-ready from one photo](docs/screenshot.png)
+![KampungCart home page: Make your shop AI-ready from one photo](docs/KampungCart_.png)
 
 **Contents:** [For judges](#for-judges) · [Try it](#try-it-in-2-minutes) · [How it works](#how-it-works) · [Stack](#stack) · [Test results](#test-results) · [Security](#security) · [Connect an AI agent](#connect-an-ai-agent)
 
