@@ -19,7 +19,9 @@ Built for the **Google Cloud AI Builder Cup 2026 — Retail & Commerce**.
 | | |
 |---|---|
 | **Live app** | https://kampungcart-42629827376.asia-southeast1.run.app |
-| **Demo video** | https://drive.google.com/file/d/1hU9Ib6UQdnt760w8A6tIPrtFl-RPAWwv/view?pli=1 |
+| **Demo video (90 sec)** | https://drive.google.com/file/d/1Uy9-7T8-7wy2R7vW0JyoEDoYScFHOBUt/view?usp=sharing |
+| **Full demo (3 min)** | https://drive.google.com/file/d/1hU9Ib6UQdnt760w8A6tIPrtFl-RPAWwv/view?pli=1 |
+| **Meet the Builders post** | https://www.instagram.com/p/DfKItYPkXgQ/ |
 | **Example shop** | https://kampungcart-42629827376.asia-southeast1.run.app/s/mak-kuih |
 | **Owner dashboard** | Shop owner login → **Use backup key instead** → paste `kc_CUbwMMxuNk7yDbvyL7WnuCiYTFJKGgMSZq0ofLtruhw`. It opens the example shop only and is published here for judging; it will be replaced afterwards. You can also create your own shop in step 1 below and get your own dashboard. |
 | **MCP link** | https://kampungcart-42629827376.asia-southeast1.run.app/mcp |
