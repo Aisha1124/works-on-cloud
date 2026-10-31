@@ -11,7 +11,7 @@ COPY dashboard/ ./
 RUN npm run build
 
 # --- 2. App ------------------------------------------------------------------------------
-FROM python:3.12-slim
+FROM python:3.15-slim
 COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /bin/uv
 
 ENV PYTHONUNBUFFERED=1 \
